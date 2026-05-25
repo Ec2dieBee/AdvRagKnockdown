@@ -1,13 +1,13 @@
 # Requirement
-funchooks - [here](https://github.com/Ec2dieBee/funchooks)
-A functional brain that knows how to install this and can understand Chinese(or at least machinetranslate them)
+funchooks - [here](https://github.com/Ec2dieBee/funchooks)  
+A functional brain that knows how to install this and can understand Chinese(or at least machinetranslate them)  
 ---
 # Introduction
-TBA lol
-Key bindings are literally the same as Z-City(or ragmod I guess)
-ConVars can be found with prefix "savee_advragknockdown_" and "+advragknockdown"
+TBA lol  
+Key bindings are literally the same as Z-City(or ragmod I guess)  
+ConVars can be found with prefix "savee_advragknockdown_" and "+advragknockdown"  
 
-NPCs Can Be knockdowned
+NPCs Can Be knockdowned  
 
 ---
 # Credits
