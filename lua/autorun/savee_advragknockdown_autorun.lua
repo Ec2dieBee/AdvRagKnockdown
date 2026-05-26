@@ -848,10 +848,6 @@ hook.Add("EntityFireBullets", "Savee_AdvRagKnockdown_HitScanMod", function(ent, 
 
 end)
 
-hook.Add("PostEntityFireBullets", "Savee_AdvRagKnockdown_StrictBullets", function(ent, bullet)
-    print(bullet.Trace.FuckMeDaddy)
-end)
-
 -- 所以你不必要在空中蹲下然后发现自己起不来
 -- 就当是在穿墙吧
 hook.Add("Move", "Savee_AdvRagKnockdown_RagMoveOverride", function(ply)
