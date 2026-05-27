@@ -910,8 +910,9 @@ function ENT:Initialize()
     rag:SetParent(nil)
     rag:RemoveEffects(EF_BONEMERGE)
     rag:AddEffects(EFL_DONTBLOCKLOS)
-    rag:AddFlags(FL_NOTARGET)
-    rag:SetCollisionGroup(COLLISION_GROUP_DEBRIS_TRIGGER)
+    --rag:AddFlags(FL_NOTARGET)
+    --rag:RemoveFlags(FL_OBJECT)
+    rag:SetCollisionGroup(COLLISION_GROUP_INTERACTIVE_DEBRIS)
 
     modifyRagdoll(rag, own:IsPlayer())
 
@@ -1006,7 +1007,7 @@ function ENT:Initialize()
     rag:AddCallback("PhysicsCollide", function(rag, data)
         -- 我不认为你高速创到一个灰尘会导致你昏厥, 我觉得该昏的是灰尘
         local pObj = data.PhysObject
-        local spd = (data.OurOldVelocity - data.OurNewVelocity):Length()
+        local spd = data.HitSpeed:Length() --(data.OurOldVelocity - data.OurNewVelocity):Length()
         local official = boneMassList[rag:GetBoneName(pObj:GetIndex())]
 
         spd = math.max(spd - (official and 350 or 800) * mdlScale, 0)
@@ -1085,7 +1086,7 @@ function ENT:Initialize()
     --if own:IsNPC() then
         --own:FollowBone(rag, 1)
     --else
-        own:SetMoveParent(rag)
+        own:SetParent(rag)
     --end
     self.m_iOwnMoveType = own:GetMoveType()
     self.m_iOwnCollisionGroup = own:GetCollisionGroup()
@@ -1223,7 +1224,7 @@ function ENT:TryGetUp(animTbl, forced)
     anim:SetSequence(animTbl.Sequence)
     anim:SetPlaybackRate(1)
     anim:SetCycle(animTbl.StartCycle or 0)
-    --if IsValid(tr.Entity) then anim:SetMoveParent(tr.Entity) end
+    --if IsValid(tr.Entity) then anim:SetParent(tr.Entity) end
     self.CurGetUpAnimData = animTbl
 
 end
@@ -1382,7 +1383,7 @@ function ENT:DoBrainDamages(di)
 
     --print(hitGroup)
 
-    local forceMul = math.Clamp(di:GetDamageForce():Length() / 3500, 0.5, 2)
+    local forceMul = math.Clamp(di:GetDamageForce():Length() / 3500, 0.5, 3)
     local hgMul = hitGroupMuls[hitGroup or 0]
     local dtMul = dmgTypeMuls[di:GetDamageType()]
     local stDmg = (dmg * 0.8) * (hgMul and hgMul[1] or 1) * (dtMul and dtMul[1] or 1) * forceMul * (own:IsPlayer() and 0.5 or 2)
@@ -1399,8 +1400,8 @@ function ENT:DoBrainDamages(di)
     self:SetStamina(math.max(0, stamina))
     self:SetConsciousness(math.max(0, consc))
 
-    self.NextRegenStamina = math.max(ct, self.NextRegenStamina) + math.Clamp(dmg / 20, 0.1, 1.5) * forceMul / 2
-    self.NextRegenConsciousness = math.max(ct, self.NextRegenConsciousness) + math.Clamp(dmg / 10, 0.1, 2) * forceMul / 2
+    self.NextRegenStamina = math.max(ct, self.NextRegenStamina) + math.Clamp(dmg / 20, 0.1, 3) * forceMul / 2
+    self.NextRegenConsciousness = math.max(ct, self.NextRegenConsciousness) + math.Clamp(dmg / 10, 0.1, 5) * forceMul / 2
 
 end
 
@@ -1985,9 +1986,13 @@ function ENT:Tick()
         eyepos = rag:GetAttachment(eyeatt).Pos
         eyeang = rag:GetAttachment(eyeatt).Ang        
     end
+
+    if not isPly then
+        eyepos = eyepos - own:GetInternalVariable("m_HackedGunPos") or vector_origin
+    end
     --print(1)
 
-    own:SetPos(own:EyePos() + eyeang:Forward() * 0.35, true)
+    own:SetPos(eyepos + aea:Forward() * 5 * math.max(1, mdlScale), true)
 
     --local head = pObjs["ValveBiped.Bip01_Head1"] and pObjs["ValveBiped.Bip01_Head1"].pObj
     --local headMass = head and head:GetMass() or 0
@@ -2969,7 +2974,7 @@ function ENT:Tick()
                lWinch:Remove()
            end
 
-           local spd = self.LHand_GrabbingWorld and isPly and 4500 or 2000
+           local spd = self.LHand_GrabbingWorld and 4500 or 2000
 
            if not IsValid(lWinch) then
                 local data = self.LHand_GrabbingData
@@ -3022,7 +3027,7 @@ function ENT:Tick()
                rWinch:Remove()
            end
 
-           local spd = self.RHand_GrabbingWorld and isPly and 4500 or 2000
+           local spd = self.RHand_GrabbingWorld and 4500 or 2000
 
            if not IsValid(rWinch) then
                local data = self.RHand_GrabbingData

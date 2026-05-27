@@ -887,7 +887,7 @@ end)
 hook.Add("Tick", "Savee_AdvRagKnockdown_CtrlTick", function()
     --do return end
     for _, ent in pairs(ents.FindByClass("ent_savee_advragknockdown_ctrl")) do
-        if not IsValid(ent) or ent:IsMarkedForDeletion() then return end
+        if not IsValid(ent) or ent:IsMarkedForDeletion() then continue end
         
         local own = ent:GetOwner()
         if not IsValid(ent:GetRagdoll()) or not IsValid(own) or own:IsMarkedForDeletion() or own:Health() <= 0 then ent:RemoveSelf() continue end
