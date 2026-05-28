@@ -1553,10 +1553,21 @@ if SERVER then
     hook.Add("CanPlayerEnterVehicle", "Savee_AdvRagKnockdown_NoVehicle", function(ply)
         --print(dRag)
         ---@type Entity
-        local ctrl = ply.Savee_AdvRagKnockdown_Controller
+        local ctrl = getController(ply)
         if IsValid(ctrl) then return false end
         
 
+    end)
+
+    hook.Add("SetupPlayerVisibility", "Savee_AdvRagKnockdown_PVS", function(ply, ve)
+        if IsValid(ve) and ve ~= ply then return end
+        local ctrl = getController(ply)
+        if not IsValid(ctrl) then return end
+        local rag = ctrl:GetRagdoll()
+        if not IsValid(rag) then return end
+
+        AddOriginToPVS(ply:EyePos())
+    
     end)
 
     hook.Add("PostEntityTakeDamage", "Savee_AdvRagKnockdown_RagDamage", function(rag, di, take)
@@ -1669,7 +1680,7 @@ if SERVER then
 
 else
 
-    local cv_userenderview = CreateClientConVar("savee_advragknockdown_cl_userenderview", 1, true, true, "使用RenderView, 可能会导致性能问题, 但应该可以解决不正确的Clipping", 0, 1)
+    --local cv_userenderview = CreateClientConVar("savee_advragknockdown_cl_userenderview", 1, true, true, "使用RenderView, 可能会导致性能问题, 但应该可以解决不正确的Clipping", 0, 1)
 
     local function sendAimingMsg(state)
         if not cv_kd_enabled:GetBool() then return end
@@ -1823,7 +1834,7 @@ else
     
     end)
 
-    hook.Add("RenderScene", "Savee_AdvRagKnockdown_AltView", function(pos, ang, fov)
+    --[[hook.Add("RenderScene", "Savee_AdvRagKnockdown_AltView", function(pos, ang, fov)
         local lp = LocalPlayer()
         if not IsValid(lp) or not cv_userenderview:GetBool() then return end
         lp = lp:GetViewEntity()
@@ -1834,9 +1845,17 @@ else
 
         local ctrl = getController(lp)
         if not IsValid(ctrl) then return end
+        local rag = ctrl:GetRagdoll()
+        local eyeatt = rag:LookupAttachment("eyes")
+        local eyepos = lp:EyePos()
+        local eyeang = lp:EyeAngles()
+        if eyeatt ~= 0 then
+            eyepos = rag:GetAttachment(eyeatt).Pos
+            eyeang = rag:GetAttachment(eyeatt).Ang        
+        end
 
         render.RenderView({
-            origin = pos,
+            origin = eyepos,
             angles = ang,
             x = 0, y = 0,
             w = scrW, h = scrH,
@@ -1848,7 +1867,7 @@ else
 
         return true
 
-    end)
+    end)]]
 
     -- 给"健康系统"的显示, 毕竟这玩意不是ZCity所以东西都往简单了来(其实和原版没太大关系, 除了体力这个东西)
     local stamina, consc = 100, 100

@@ -1992,7 +1992,8 @@ function ENT:Tick()
     end
     --print(1)
 
-    own:SetPos(eyepos + aea:Forward() * 5 * math.max(1, mdlScale), true)
+    --AddOriginToPVS(eyepos)
+    own:SetPos(eyepos + (aea:Forward() * 5) * math.max(1, mdlScale), true)
 
     --local head = pObjs["ValveBiped.Bip01_Head1"] and pObjs["ValveBiped.Bip01_Head1"].pObj
     --local headMass = head and head:GetMass() or 0
