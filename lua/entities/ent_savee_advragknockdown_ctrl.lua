@@ -1010,14 +1010,14 @@ function ENT:Initialize()
         local spd = data.HitSpeed:Length() --(data.OurOldVelocity - data.OurNewVelocity):Length()
         local official = boneMassList[rag:GetBoneName(pObj:GetIndex())]
 
-        spd = math.max(spd - (official and 350 or 800) * mdlScale, 0)
+        spd = math.max(spd - (official and 350 or 800) / math.max(1, mdlScale), 0)
         --print(spd)
         if spd == 0 or data.HitEntity == rag then return end
 
         local ct = CurTime()
         local ent = data.HitEntity
 
-        local dmg = spd / 5 - pObj:GetMass()
+        local dmg = spd / 10 - pObj:GetMass()
         --print(dmg)
 
         --print(data.PhysObject)

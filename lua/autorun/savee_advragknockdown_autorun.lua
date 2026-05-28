@@ -8,6 +8,7 @@
 -- 
 -- 2026/5/17 这一切全他妈关于速度 你想要留下你的名字就必须快点, 是的这都关于名头, 你第一个弄出来这个名头就是你的
 -- @RagKnockdown @MPNKnockdown(RagKnockdown的更全的老版本, 支持ClassicKnockdown(ZSKnockdown), 这是我的命名)
+-- TODO: SANITY CHECK, 如果有更多需要读CTRL的玩意
 
 
 AddCSLuaFile()
@@ -1668,6 +1669,8 @@ if SERVER then
 
 else
 
+    local cv_userenderview = CreateClientConVar("savee_advragknockdown_cl_userenderview", 1, true, true, "使用RenderView, 可能会导致性能问题, 但应该可以解决不正确的Clipping", 0, 1)
+
     local function sendAimingMsg(state)
         if not cv_kd_enabled:GetBool() then return end
         net.Start("Savee_AdvRagKnockdown_OperationMsg", true)
@@ -1818,6 +1821,33 @@ else
         if returnCheck(self) then return end
         return self:PreDrawPlayerHands(...)
     
+    end)
+
+    hook.Add("RenderScene", "Savee_AdvRagKnockdown_AltView", function(pos, ang, fov)
+        local lp = LocalPlayer()
+        if not IsValid(lp) or not cv_userenderview:GetBool() then return end
+        lp = lp:GetViewEntity()
+
+        local scrW, scrH = ScrW(), ScrH()
+
+        --lp:EyePos()
+
+        local ctrl = getController(lp)
+        if not IsValid(ctrl) then return end
+
+        render.RenderView({
+            origin = pos,
+            angles = ang,
+            x = 0, y = 0,
+            w = scrW, h = scrH,
+            drawhud = true,
+            drawmonitors = true,
+            dopostprocess = true,
+        })
+        --render.RenderHUD(0, 0, scrW, scrH)
+
+        return true
+
     end)
 
     -- 给"健康系统"的显示, 毕竟这玩意不是ZCity所以东西都往简单了来(其实和原版没太大关系, 除了体力这个东西)
