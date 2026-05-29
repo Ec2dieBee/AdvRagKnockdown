@@ -1,7 +1,7 @@
 -- ToDo: 很显然这将成为一个"枢纽", 所以你要把功能模块一类的玩意加上
 -- 很显然这会和Ragknockdown冲突, 但是目前先做进阶起身(是的 你不能在Ragknockdown里创飞一个正在起来的人, 这不好)
 -- ToDo: 代码莫写死(模 块 化)
--- ToDo: NPC兼容
+-- Done: NPC兼容
 
 -- 显然的 Z-City的系统很Newbility
 -- 但是我们仍然需要自己做一个, 除了复用键位以外应该不会有问题
@@ -18,7 +18,7 @@
 -- 
 -- ToDo: 加个装死检测, 用你从其它代码学到的"Cache"
 ---警告! 这并不意味着你可以躲在电视后面听The Great Punishment然后拿霰弹枪射击**某个很大的猫科生物**
--- ToDo: 引入类似Z-City的健康系统, (意识(能否控制武器/控制力), 体力(最大控制力), 我猜这两个够用了(坐等其他人搬运Z-City健康系统.jpg))
+-- Done: 引入类似Z-City的健康系统, (意识(能否控制武器/控制力), 体力(最大控制力), 我猜这两个够用了(坐等其他人搬运Z-City健康系统.jpg))
 -- ToDo: 让Miku可以舒适的射击
 
 local isSP = game.SinglePlayer()
@@ -448,6 +448,16 @@ local function calcBasicArmIK(armPos, armAng, handPos, mdlScale, pole, rotateAng
     --ctrl.DebugMdl:SetAngles(angUpperArm)
 
     return angUpperArm, angForeArm
+end
+
+local function getCV(cv, st)
+    cv = GetConVar("savee_advragknockdown_" .. cv)
+    if not cv then return end
+    if st then
+        cv = cv["Get" .. st](cv)
+    end
+
+    return cv
 end
 
 ENT.Type = "anim"
@@ -904,9 +914,9 @@ function ENT:Initialize()
     end]]
     --own:CaoWo("yesyes")
 
-    --[[if own:IsNPC() then
+    if own:IsNPC() and getCV("npc_usehook_createentityragdoll", "Bool") then
         hook.Run("CreateEntityRagdoll", own, rag, true)
-    end]]
+    end
     rag:SetParent(nil)
     rag:RemoveEffects(EF_BONEMERGE)
     rag:AddEffects(EFL_DONTBLOCKLOS)
@@ -1029,7 +1039,7 @@ function ENT:Initialize()
 
         --print(rag:GetBoneName(bone), hitGroup)
 
-        local stDmg = spd / 100 * (hgMul and hgMul[1] or 1)
+        --[[local stDmg = spd / 100 * (hgMul and hgMul[1] or 1)
         local csDmg = spd / 20 * (hgMul and hgMul[2] or 1)
 
         local stamina = self:GetStamina()
@@ -1042,7 +1052,7 @@ function ENT:Initialize()
         self:SetConsciousness(math.max(0, consc))
 
         self.NextRegenStamina = math.max(ct, self.NextRegenStamina) + math.Clamp(stDmg / 20, 0.1, 1)
-        self.NextRegenConsciousness = math.max(ct, self.NextRegenConsciousness) + math.Clamp(csDmg / 20, 0.1, 1.5)
+        self.NextRegenConsciousness = math.max(ct, self.NextRegenConsciousness) + math.Clamp(csDmg / 20, 0.1, 1.5)]]
 
         local di = DamageInfo()
         self.DI_MarkedAsTaken[di] = true
@@ -1386,8 +1396,8 @@ function ENT:DoBrainDamages(di)
     local forceMul = math.Clamp(di:GetDamageForce():Length() / 3500, 0.5, 3)
     local hgMul = hitGroupMuls[hitGroup or 0]
     local dtMul = dmgTypeMuls[di:GetDamageType()]
-    local stDmg = (dmg * 0.8) * (hgMul and hgMul[1] or 1) * (dtMul and dtMul[1] or 1) * forceMul * (own:IsPlayer() and 0.5 or 2)
-    local csDmg = (dmg * 0.5) * (hgMul and hgMul[2] or 1) * (dtMul and dtMul[2] or 1) * forceMul * (own:IsPlayer() and 0.2 or 1.5)
+    local stDmg = (dmg * 0.8) * (hgMul and hgMul[1] or 1) * (dtMul and dtMul[1] or 1) * forceMul * getCV("statcalc_" .. (own:IsPlayer() and "ply" or "npc") .. "_staminadmgmul", "Float")
+    local csDmg = (dmg * 0.5) * (hgMul and hgMul[2] or 1) * (dtMul and dtMul[2] or 1) * forceMul * getCV("statcalc_" .. (own:IsPlayer() and "ply" or "npc") .. "_conscdmgmul", "Float")
 
     --print(rag:GetBoneName(bone), rag.Savee_AdvRagKnockdown_HitGroups[bone])
 
@@ -1400,7 +1410,7 @@ function ENT:DoBrainDamages(di)
     self:SetStamina(math.max(0, stamina))
     self:SetConsciousness(math.max(0, consc))
 
-    self.NextRegenStamina = math.max(ct, self.NextRegenStamina) + math.Clamp(dmg / 20, 0.1, 3) * forceMul / 2
+    self.NextRegenStamina = math.max(ct, self.NextRegenStamina) + math.Clamp(dmg / 20, 0.1, 3) * forceMul
     self.NextRegenConsciousness = math.max(ct, self.NextRegenConsciousness) + math.Clamp(dmg / 10, 0.1, 5) * forceMul / 2
 
 end

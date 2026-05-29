@@ -14,15 +14,24 @@
 AddCSLuaFile()
 
 -- CVs
+local cvPrefix = "savee_advragknockdown_"
 local cvTags = {FCVAR_ARCHIVE,FCVAR_REPLICATED}
 
 -- 证明我抄袭了RagKnockdown的有力证据
-local cv_kd_enabled = CreateConVar("savee_advragknockdown_enabled", 1, cvTags, "字面意思, 除了typo", 0, 1)
-local cv_kd_enabled_ply = CreateConVar("savee_advragknockdown_enableply", 1, cvTags, "字面意思, 除了typo", 0, 1)
-local cv_kd_enabled_npc = CreateConVar("savee_advragknockdown_enablenpc", 1, cvTags, "字面意思, 除了typo", 0, 1)
-local cv_kd_damagecalc_usetakedamage = CreateConVar("savee_advragknockdown_damagecalc_usetakedamage", 0, cvTags, "使用TakeDamageInfo并更进一步修改BulletTable, 可能会出现没受到伤害且力度不够时仍被击倒的情况", 0, 1)
-local cv_kd_damagecalc_usetakedamage_bulletnodelay = CreateConVar("savee_advragknockdown_damagecalc_usetakedamage_dontdelaybulletcalc", 0, cvTags, "取消延迟子弹的击倒判定, **十分不建议在ZCity里启用这个**", 0, 1)
-local cv_kd_damagecalc_usetakedamage_strictbullet = CreateConVar("savee_advragknockdown_damagecalc_usetakedamage_strictbullet", 0, cvTags, "启用更加\"严苛\"的判定方式以防止无限穿透四肢 0-正常 1-严苛 2-很几把严苛 **建议在ZCity里设成2**", 0, 2)
+local cv_kd_enabled = CreateConVar(cvPrefix .. "enabled", 1, cvTags, "字面意思, 除了typo", 0, 1)
+local cv_kd_enabled_ply = CreateConVar(cvPrefix .. "enableply", 1, cvTags, "字面意思, 除了typo", 0, 1)
+local cv_kd_enabled_npc = CreateConVar(cvPrefix .. "enablenpc", 1, cvTags, "字面意思, 除了typo", 0, 1)
+local cv_kd_damagecalc_usetakedamage = CreateConVar(cvPrefix .. "damagecalc_usetakedamage", 0, cvTags, "使用TakeDamageInfo并更进一步修改BulletTable, 可能会出现没受到伤害且力度不够时仍被击倒的情况", 0, 1)
+local cv_kd_damagecalc_usetakedamage_bulletnodelay = CreateConVar(cvPrefix .. "damagecalc_usetakedamage_dontdelaybulletcalc", 0, cvTags, "取消延迟子弹的击倒判定, **十分不建议在ZCity里启用这个**", 0, 1)
+local cv_kd_damagecalc_usetakedamage_strictbullet = CreateConVar(cvPrefix .. "damagecalc_usetakedamage_strictbullet", 0, cvTags, "启用更加\"严苛\"的判定方式以防止无限穿透四肢 0-正常 1-严苛 2-很几把严苛 **建议在ZCity里设成2**", 0, 2)
+
+CreateConVar(cvPrefix .. "npc_usehook_createentityragdoll", 0, cvTags, "在NPC被击倒时调用CreateEntityRagdoll", 0, 1)
+CreateConVar(cvPrefix .. "playdead_npc_usehook_createentityragdoll", 1, cvTags, "在NPC假死时调用CreateEntityRagdoll", 0, 1)
+
+CreateConVar(cvPrefix .. "statcalc_npc_staminadmgmul", 1, cvTags, "[对NPC] 体力伤害乘数", 0)
+CreateConVar(cvPrefix .. "statcalc_npc_conscdmgmul", 1, cvTags, "[对NPC] 意识伤害乘数", 0)
+CreateConVar(cvPrefix .. "statcalc_ply_staminadmgmul", 1, cvTags, "[对玩家] 体力伤害乘数", 0)
+CreateConVar(cvPrefix .. "statcalc_ply_conscdmgmul", 1, cvTags, "[对玩家] 意识伤害乘数", 0)
 
 local entMeta = FindMetaTable("Entity")
 local plyMeta = FindMetaTable("Player")
@@ -1116,15 +1125,16 @@ if SERVER then
 
         --print(di)
 
-        if not take or not IsValid(ctrl) or ctrl:IsMarkedForDeletion() or not rag:IsRagdoll() or ctrl.DI_MarkedAsTaken[di] then
-            rag = IsValid(ctrl) and ctrl:GetRagdoll() 
-            if IsValid(rag) then rag:TakePhysicsDamage(di) end
+        if not take or not IsValid(ctrl) or ctrl:IsMarkedForDeletion() or ctrl.DI_MarkedAsTaken[di] then
             return
         end
         --if ctrl.DI_MarkedAsTaken[di] then return end
         
         if not rag:IsRagdoll() then
+            rag = IsValid(ctrl) and ctrl:GetRagdoll()
+            if IsValid(rag) then rag:TakePhysicsDamage(di) end
             ctrl:DoBrainDamages(di)
+            return
         end
         --local count = table.Count(ctrl.DI_MarkedAsTaken)
         --if count >= 100 then error("FUCK") end
@@ -1295,11 +1305,11 @@ if SERVER then
     Savee_AdvRagKnockdown_DoRagDamage = calcRagDamage
     Savee_AdvRagKnockdown_DoKnockdown = doKnockdown
 
-    --[[concommand.Add("savee_advragknockdown_knockdowntest", function()
+    --[[concommand.Add(cvPrefix .. "knockdowntest", function()
         doKnockdown(Entity(1):GetEyeTrace().Entity)
     end)
 
-    concommand.Add("savee_advragknockdown_test", function(p)
+    concommand.Add(cvPrefix .. "test", function(p)
     
         local rag = p:GetEyeTrace().Entity
 
@@ -1680,7 +1690,7 @@ if SERVER then
 
 else
 
-    --local cv_userenderview = CreateClientConVar("savee_advragknockdown_cl_userenderview", 1, true, true, "使用RenderView, 可能会导致性能问题, 但应该可以解决不正确的Clipping", 0, 1)
+    --local cv_userenderview = CreateClientConVar(cvPrefix .. "cl_userenderview", 1, true, true, "使用RenderView, 可能会导致性能问题, 但应该可以解决不正确的Clipping", 0, 1)
 
     local function sendAimingMsg(state)
         if not cv_kd_enabled:GetBool() then return end
@@ -1697,14 +1707,14 @@ else
         net.SendToServer()
     end
 
-    concommand.Add("savee_advragknockdown_doknockdown", function()
+    concommand.Add(cvPrefix .. "doknockdown", function()
         if not cv_kd_enabled:GetBool() then return end
         net.Start("Savee_AdvRagKnockdown_OperationMsg", true)
         net.WriteUInt(0, BITCOUNT_OPERATIONINFO)
         net.SendToServer()
     end)
 
-    concommand.Add("savee_advragknockdown_toggleaimweapon", function()
+    concommand.Add(cvPrefix .. "toggleaimweapon", function()
         sendAimingMsg()
     end)
     concommand.Add("+advragknockdown_aimweapon", function()
@@ -1713,7 +1723,7 @@ else
     concommand.Add("-advragknockdown_aimweapon", function()
         sendAimingMsg(false)
     end)
-    concommand.Add("savee_advragknockdown_toggleaimlowpose", function()
+    concommand.Add(cvPrefix .. "toggleaimlowpose", function()
         sendLowPoseMsg()
     end)
     concommand.Add("+advragknockdown_aimlowpose", function()
@@ -1780,7 +1790,7 @@ else
         ---@type Entity
         local ctrl = getController(ply)
         if not IsValid(ctrl) then return end
-        local aimingBind = input.LookupBinding("+advragknockdown_aimweapon") or input.LookupBinding("savee_advragknockdown_toggleaimweapon")
+        local aimingBind = input.LookupBinding("+advragknockdown_aimweapon") or input.LookupBinding(cvPrefix .. "toggleaimweapon")
         if not aimingBind then
             --print(1)
             --print(cmd:KeyDown(IN_USE))
