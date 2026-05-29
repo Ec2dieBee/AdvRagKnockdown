@@ -1033,7 +1033,7 @@ if SERVER then
                 if di then ctrl.DI_MarkedAsTaken[di] = true end
                 
                 rag:TakePhysicsDamage(vec) 
-                ctrl:DoBrainDamages(vec)
+                ctrl:DoBrainDamages(vec, true)
                 return
             end
             

@@ -1364,10 +1364,10 @@ local function checkCanPull(ent)
     return ent:IsWorld() or IsValid(ent) and (ent:CreatedByMap() and ent:GetMoveType() ~= MOVETYPE_VPHYSICS or (IsValid(ent:GetPhysicsObject()) and not ent:GetPhysicsObject():IsMotionEnabled()) or ent:IsVehicle())
 end
 
-function ENT:DoBrainDamages(di)
+function ENT:DoBrainDamages(di, force)
 
     local ct = CurTime()
-    if self.PreventPhysAttackTill > ct then return end
+    if not force and self.PreventPhysAttackTill > ct then return end
 
     local dmg = di:GetDamage()
     local rag = self:GetRagdoll()
