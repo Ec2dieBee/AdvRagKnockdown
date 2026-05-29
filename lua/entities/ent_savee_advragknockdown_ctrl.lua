@@ -1018,7 +1018,7 @@ function ENT:Initialize()
         -- 我不认为你高速创到一个灰尘会导致你昏厥, 我觉得该昏的是灰尘
         local pObj = data.PhysObject
         
-        local spd = data.HitSpeed --(data.OurOldVelocity - data.OurNewVelocity):Length()
+        local spd = data.HitSpeed --(data.OurOldVelocity - data.OurNewVelocity)
         local dot = spd:GetNormalized():Dot(data.HitNormal)
         local mul = (1 - dot) / 2
         spd = spd:Length()
@@ -1035,8 +1035,8 @@ function ENT:Initialize()
         local ct = CurTime()
         local ent = data.HitEntity
 
-        local dmg = spd / 5 - pObj:GetMass()
-        --print(dmg)
+        local dmg = spd / 10 - pObj:GetMass()
+        --print(dmg, ent)
 
         --print(data.PhysObject)
         --PrintTable(data.PhysObject:GetTable())
