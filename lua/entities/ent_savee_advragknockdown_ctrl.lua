@@ -1017,17 +1017,25 @@ function ENT:Initialize()
     rag:AddCallback("PhysicsCollide", function(rag, data)
         -- 我不认为你高速创到一个灰尘会导致你昏厥, 我觉得该昏的是灰尘
         local pObj = data.PhysObject
-        local spd = data.HitSpeed:Length() --(data.OurOldVelocity - data.OurNewVelocity):Length()
+        
+        local spd = data.HitSpeed --(data.OurOldVelocity - data.OurNewVelocity):Length()
+        local dot = spd:GetNormalized():Dot(data.HitNormal)
+        local mul = (1 - dot) / 2
+        spd = spd:Length()
+
         local official = boneMassList[rag:GetBoneName(pObj:GetIndex())]
 
-        spd = math.max(spd - (official and 350 or 800) / math.max(1, mdlScale), 0)
+        --print(spd * mul, mul)
+
+        spd = math.max(spd * mul - (official and 400 or 800) / math.max(1, mdlScale), 0)
+
         --print(spd)
         if spd == 0 or data.HitEntity == rag then return end
 
         local ct = CurTime()
         local ent = data.HitEntity
 
-        local dmg = spd / 10 - pObj:GetMass()
+        local dmg = spd / 5 - pObj:GetMass()
         --print(dmg)
 
         --print(data.PhysObject)
@@ -1814,7 +1822,7 @@ function ENT:Tick()
     --local torsomovespd, torsomovespddamp, torsomovespddelta = 450, 450, 0.2
     local headang, headangdamp, headspd, headspddamp, headdampfactor, headdelta = 50, 50, 0, 0, 1, 0.05
     local handang, handangdamp, handspd, handspddamp, handdampfactor, handdelta = 265, 265, 235, 235, 0.8, 0.2
-    local handaimang, handaimangdamp, handaimspd, handaimspddamp, handaimdampfactor, handaimdelta = 565, 665, 5, 0, 1, 0.1
+    local handaimang, handaimangdamp, handaimspd, handaimspddamp, handaimdampfactor, handaimdelta = 1200, 1000, 5, 0, 1, 0.1
     local pelvisang, pelvisangdamp, pelvisspd, pelvisspddamp, pelvisdampfactor, pelvisdelta = 0, 20, 0, 0, 0.8, 0.15
     local legang, legangdamp, legspd, legspddamp, legsdampfactor, legsdelta = 35, 10, 0, 0, 0.8, 0.2
 
