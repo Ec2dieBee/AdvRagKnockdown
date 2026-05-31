@@ -755,9 +755,9 @@ local function modifyRagdoll(rag, replace)
             --print(bone)
             pObj:SetMass(math.max(pObj:GetMass(), boneMassList[bone]))
             --print(bone)
-        else--if data.physBone then
+        --[[else--if data.physBone then
             local mass = pObj:GetMass()
-            pObj:SetMass(math.max(1, mass * 0.2))
+            pObj:SetMass(math.max(1, mass * 0.2))]]
         end
         
     end
@@ -1114,7 +1114,7 @@ function ENT:Initialize()
     --own:SetNoDraw()
 
     --if own:IsPlayer() then
-    own:SetLocalPos(Vector(0, 0, 0), true)
+    --own:SetLocalPos(Vector(0, 0, 0), true)
     --end
 
     local aimBlock = own:IsNPC() and aimBlackListedNPCClass[own:GetClass()]
@@ -1168,11 +1168,11 @@ function ENT:Initialize()
     end
 
     --own:TakeDamage(10000)
-    local debugMdl = ents.Create("base_anim")
+    --[[local debugMdl = ents.Create("base_anim")
     self.DebugMdl = debugMdl
     self:DeleteOnRemove(debugMdl)
     debugMdl:SetModel("models/Gibs/wood_gib01d.mdl")
-    debugMdl:Spawn()
+    debugMdl:Spawn()]]
 
     
     --local own = self:GetOwner()
@@ -1202,6 +1202,8 @@ function ENT:HasKeyInput(key)
     --own:ChatPrint(tostring(own:KeyDown(key)))
     return self.KeyInputs[key] or (own:IsPlayer() and own:KeyDown(key))
 end
+
+function ENT:GetRagdoll() end
 
 function ENT:TryGetUp(animTbl, forced)
 
@@ -1514,7 +1516,7 @@ function ENT:Think()
         --own:SetCondition(COND.WEAPON_HAS_LOS)
         local ang = Angle(0, aea.y, 0)
         --own:SetLocalAngles(ang)
-        own:SetPos(rag:GetPos() - own:OBBCenter(), true)
+        --own:SetPos(rag:GetPos() - own:OBBCenter(), true)
 
         if consc < 45 then
             own:ClearSchedule()
@@ -1823,7 +1825,7 @@ function ENT:Tick()
     --local torsomovespd, torsomovespddamp, torsomovespddelta = 450, 450, 0.2
     local headang, headangdamp, headspd, headspddamp, headdampfactor, headdelta = 50, 50, 0, 0, 1, 0.05
     local handang, handangdamp, handspd, handspddamp, handdampfactor, handdelta = 265, 265, 235, 235, 0.8, 0.2
-    local handaimang, handaimangdamp, handaimspd, handaimspddamp, handaimdampfactor, handaimdelta = 250, 200, 5, 0, 0, 0.1
+    local handaimang, handaimangdamp, handaimspd, handaimspddamp, handaimdampfactor, handaimdelta = 250, 200, 5, 0, 1, 0.1
     local pelvisang, pelvisangdamp, pelvisspd, pelvisspddamp, pelvisdampfactor, pelvisdelta = 0, 20, 0, 0, 0.8, 0.15
     local legang, legangdamp, legspd, legspddamp, legsdampfactor, legsdelta = 35, 10, 0, 0, 0.8, 0.2
 

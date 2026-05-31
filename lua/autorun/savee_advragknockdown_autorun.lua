@@ -102,7 +102,9 @@ local function entTypeCheck(ent)
 end
 local function getController(ent)
     if not cv_kd_enabled:GetBool() then return end
-    return CLIENT and ent:GetNW2Entity("Savee_AdvRagKnockdown_Controller") or ent.Savee_AdvRagKnockdown_Controller
+    local ctrl = CLIENT and ent:GetNW2Entity("Savee_AdvRagKnockdown_Controller") or ent.Savee_AdvRagKnockdown_Controller
+    if not IsValid(ctrl) or not ctrl.GetRagdoll or not IsValid(ctrl:GetRagdoll()) then return end
+    return ctrl
 end
 
 -- debug.lua
@@ -155,6 +157,7 @@ local function isWhiteListedTrace(traceStr)
     return false
 end
 
+
 for _, str in ipairs(trs) do
     
     local function trOverride(data, ...)
@@ -182,7 +185,7 @@ for _, str in ipairs(trs) do
 
                 if not IsValid(e) then continue end
                 local ctrl = getController(e)
-                if not IsValid(ctrl) or not ctrl.GetRagdoll or found[ctrl] then continue end
+                if not IsValid(ctrl) or found[ctrl] then continue end
                 found[ctrl] = true
                 --print(e)
                 filter[#filter + 1] = e:IsRagdoll() and ctrl:GetOwner() or ctrl:GetRagdoll()
@@ -192,7 +195,7 @@ for _, str in ipairs(trs) do
         elseif isentity(filter) then
 
             local ctrl = getController(filter)
-            if not IsValid(ctrl) or not ctrl.GetRagdoll then return __undetoured(data, ...) end
+            if not IsValid(ctrl) then return __undetoured(data, ...) end
 
             --print(111)
             data.filter = {ctrl:GetOwner(), ctrl:GetRagdoll()}
@@ -269,9 +272,8 @@ funchooks.Add("Entity.GetPos", "Savee_AdvRagKnockdown_Sync", function(ent, raw, 
 
     if raw or not entTypeCheck(ent) then return __undetoured(ent, raw, ...) end
     local ctrl = getController(ent)
-    if not IsValid(ctrl) or not ctrl.GetRagdoll then return __undetoured(ent, raw, ...) end
+    if not IsValid(ctrl) then return __undetoured(ent, raw, ...) end
     local rag = ctrl:GetRagdoll()
-    if not IsValid(rag) then return __undetoured(ent, raw, ...) end
     local bone = rag:GetBonePosition(0)
 
     return bone
@@ -296,7 +298,7 @@ funchooks.Add("Player.GetShootPos", "Savee_AdvRagKnockdown_Sync", function(ply, 
     --do return __undetoured(ply, ...) end
 
     local ctrl = getController(ply)
-    if raw or not IsValid(ctrl) or not ctrl.GetRagdoll then return __undetoured(ply, raw, ...) end
+    if raw or not IsValid(ctrl) then return __undetoured(ply, raw, ...) end
     local rag = ctrl:GetRagdoll()
 
     local wep = ply:GetActiveWeapon()
@@ -359,7 +361,7 @@ funchooks.Add("Entity.EyePos", "Savee_AdvRagKnockdown_Sync", function(ply, raw, 
     if raw or not entTypeCheck(ply) then return __undetoured(ply, raw, ...) end
 
     local ctrl = getController(ply)
-    if not IsValid(ctrl) or not ctrl.GetRagdoll then return __undetoured(ply, raw, ...) end
+    if not IsValid(ctrl) then return __undetoured(ply, raw, ...) end
     local sysTime = SysTime()
     
     if lastSysTime >= sysTime and ctrl.VarCaches["EyePos"] then 
@@ -368,9 +370,7 @@ funchooks.Add("Entity.EyePos", "Savee_AdvRagKnockdown_Sync", function(ply, raw, 
     end
     lastSysTime = sysTime + FrameTime() * 0.1
 
-
     local rag = ctrl:GetRagdoll()
-    if not IsValid(rag) then return __undetoured(ply, raw, ...) end
 
     local bone = rag:LookupBone("ValveBiped.Bip01_R_Hand")
     if not bone then return __undetoured(ply, raw, ...) end
@@ -441,10 +441,9 @@ funchooks.Add("Entity.GetVelocity", "Savee_AdvRagKnockdown_Sync", function(ply, 
     if not entTypeCheck(ply) then return __undetoured(ply, ...) end
 
     local ctrl = getController(ply)
-    if not IsValid(ctrl) or not ctrl.GetRagdoll then return __undetoured(ply, ...) end
+    if not IsValid(ctrl) then return __undetoured(ply, ...) end
     
     local rag = ctrl:GetRagdoll()
-    if not IsValid(rag) then return __undetoured(ply, ...) end
 
     local vel = SERVER and rag:GetPhysicsObjectNum(0):GetVelocity() or rag:GetVelocity()
 
@@ -463,10 +462,9 @@ funchooks.AddPost("Entity.SetPos", "Savee_AdvRagKnockdown_Sync", function(ply, i
     local ctrl = getController(ply)
 
     -- 神秘多人游戏bug
-    if not IsValid(ctrl) or not ctrl.GetRagdoll then return __undetoured(ply, inputs, ...) end
+    if not IsValid(ctrl) then return __undetoured(ply, inputs, ...) end
 
     local rag = ctrl:GetRagdoll()
-    if not IsValid(rag) then return __undetoured(ply, inputs, ...) end
     local pos = inputs[1]
 
     local oldPos = ply:GetPos()
@@ -491,7 +489,6 @@ funchooks.Add("Entity.ManipulateBoneAngles", "Savee_AdvRagKnockdown_Sync", funct
     local ctrl = getController(ply)
     if not IsValid(ctrl) then return __undetoured(ply, ...) end
     local rag = ctrl:GetRagdoll()
-    if not IsValid(rag) then return __undetoured(ply, ...) end
 
     rag:ManipulateBoneAngles(...)
 
@@ -509,7 +506,6 @@ funchooks.Add("Entity.ManipulateBonePosition", "Savee_AdvRagKnockdown_Sync", fun
     local ctrl = getController(ply)
     if not IsValid(ctrl) then return __undetoured(ply, ...) end
     local rag = ctrl:GetRagdoll()
-    if not IsValid(rag) then return __undetoured(ply, ...) end
 
     rag:ManipulateBonePosition(...)
 
@@ -517,12 +513,30 @@ funchooks.Add("Entity.ManipulateBonePosition", "Savee_AdvRagKnockdown_Sync", fun
    
 
 end)
+
+funchooks.Add("Entity.IsOnGround", "Savee_AdvRagKnockdown_Sync", function(ent, ...)
+    if ent:IsRagdoll() then return __undetoured(ent, ...) end
+
+    local ctrl = getController(ent)
+    if not IsValid(ctrl) then return __undetoured(ent, ...) end
+
+    return ctrl:GetRagdoll():IsOnGround(...)
+end)
+funchooks.Add("Entity.OnGround", "Savee_AdvRagKnockdown_Sync", function(ent, ...)
+    if ent:IsRagdoll() then return __undetoured(ent, ...) end
+
+    local ctrl = getController(ent)
+    if not IsValid(ctrl) then return __undetoured(ent, ...) end
+
+    return ctrl:GetRagdoll():OnGround(...)
+end)
+
 funchooks.Add("Player.GetAimVector", "Savee_AdvRagKnockdown_Sync", function(ply, raw, ...)
 
     --do return __undetoured(ply, ...) end
 
     local ctrl = getController(ply)
-    if not IsValid(ctrl) or not ctrl.GetRagdoll then return __undetoured(ply, raw, ...) end
+    if not IsValid(ctrl) then return __undetoured(ply, raw, ...) end
     local rag = ctrl:GetRagdoll()
     local bone = rag:LookupBone("ValveBiped.Bip01_R_Hand")
 
@@ -1561,10 +1575,7 @@ if SERVER then
     
         ---@type Entity
         local rag = ctrl:GetRagdoll()
-        --print(rag)
-        --ctrl:Remove()
-        
-        if not IsValid(rag) then return end
+
         --print(1)
         for i = 0, rag:GetPhysicsObjectCount() - 1 do
             local pObj = dRag:GetPhysicsObjectNum(i)
@@ -1588,10 +1599,8 @@ if SERVER then
         local ctrl = getController(ply)
         if not IsValid(ctrl) then return end
         local rag = ctrl:GetRagdoll()
-        if not IsValid(rag) then return end
 
         AddOriginToPVS(ply:EyePos())
-    
     end)
 
     hook.Add("PostEntityTakeDamage", "Savee_AdvRagKnockdown_RagDamage", function(rag, di, take)
@@ -1757,9 +1766,8 @@ else
         if not IsValid(ctrl) then return end
         --print(ply)
         --deadRag:SetPos(ply:GetPos())
-        if not ctrl.GetRagdoll then return end
+        
         local rag = ctrl:GetRagdoll()
-        if not IsValid(rag) then return end
         deadRag:SetPos(rag:GetPos())
 
         for i = 0, deadRag:GetPhysicsObjectCount() - 1 do
