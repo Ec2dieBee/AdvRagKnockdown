@@ -176,24 +176,26 @@ for _, str in ipairs(trs) do
         local filter = data.filter
         --print(filter)
         if istable(filter) then
+            local found = {}
 
             for _, e in ipairs(filter) do
 
-                if not IsValid(e) or not e:IsPlayer() then continue end
+                if not IsValid(e) then continue end
                 local ctrl = getController(e)
-                if not IsValid(ctrl) or not ctrl.GetRagdoll then continue end
+                if not IsValid(ctrl) or not ctrl.GetRagdoll or found[ctrl] then continue end
+                found[ctrl] = true
                 --print(e)
-                filter[#filter + 1] = ctrl:GetRagdoll()
+                filter[#filter + 1] = e:IsRagdoll() and ctrl:GetOwner() or ctrl:GetRagdoll()
 
             end
 
-        elseif isentity(filter) and filter:IsPlayer() then
+        elseif isentity(filter) then
 
             local ctrl = getController(filter)
             if not IsValid(ctrl) or not ctrl.GetRagdoll then return __undetoured(data, ...) end
 
             --print(111)
-            data.filter = {filter, ctrl:GetRagdoll()}
+            data.filter = {ctrl:GetOwner(), ctrl:GetRagdoll()}
             --if SERVER then debug.Trace() end
 
         end
@@ -708,6 +710,9 @@ hook.Add("EntityFireBullets", "Savee_AdvRagKnockdown_HitScanMod", function(ent, 
                     btr.HitBox = rag.Savee_AdvRagKnockdown_HitBoxes[bone]
                     btr.HitGroup = hitGroup --own:GetHitBoxHitGroup(rag.Savee_AdvRagKnockdown_HitBoxes[bone], 0)
                     btr.Entity = own
+                    --print("?")
+                    --di:SetDamage(di:GetDamage() / 2)
+                    --if not bullet.IgnoreEntity then bullet.IgnoreEntity = rag end
 
                     --ctrl.DI_MarkedAsTaken[di] = true
 
@@ -720,9 +725,11 @@ hook.Add("EntityFireBullets", "Savee_AdvRagKnockdown_HitScanMod", function(ent, 
 
             local result
 
+            --print(btr.Entity)
+            --print(di)
             if cb then
                 --print(btr.HitGroup)
-                cb(attacker, btr, di)
+                result = cb(attacker, btr, di)
                 --print(1, di, btr.Entity)
             end
 
@@ -730,12 +737,13 @@ hook.Add("EntityFireBullets", "Savee_AdvRagKnockdown_HitScanMod", function(ent, 
             if SERVER and cv_kd_damagecalc_usetakedamage:GetBool() and IsValid(rag) then
                 if cv_kd_damagecalc_usetakedamage_bulletnodelay:GetBool() then
                     if rag:IsRagdoll() then
-                        --Savee_AdvRagKnockdown_DoRagDamage(rag, di, di:GetDamage() > 0)
+                        Savee_AdvRagKnockdown_DoRagDamage(rag, di, di:GetDamage() > 0)
                     else
                         Savee_AdvRagKnockdown_DMGKnockdown(rag, di, di:GetDamage() > 0)
                     end
                 else
                     timer.Simple(tickInterval, function()
+                        if not di then return end
                         if rag:IsRagdoll() then
                             Savee_AdvRagKnockdown_DoRagDamage(rag, di, di:GetDamage() > 0)
                         else
@@ -1119,9 +1127,12 @@ if SERVER then
 
         --if not cv_kd_enabled:GetBool() then return end
 
+        --do return end
+
         ---@type Entity
         local ctrl = rag.Savee_AdvRagKnockdown_Controller
         if not IsValid(ctrl) then return end
+        --print(di, rag, ctrl.DI_MarkedAsTaken[di])
 
         --print(di)
 
@@ -1132,10 +1143,13 @@ if SERVER then
         
         if not rag:IsRagdoll() then
             rag = IsValid(ctrl) and ctrl:GetRagdoll()
-            if IsValid(rag) then rag:TakePhysicsDamage(di) end
+            --if IsValid(rag) then rag:TakePhysicsDamage(di) end
             ctrl:DoBrainDamages(di)
             return
         end
+
+        --error("RAT!")
+        --print(di)
         --local count = table.Count(ctrl.DI_MarkedAsTaken)
         --if count >= 100 then error("FUCK") end
 
@@ -1214,6 +1228,7 @@ if SERVER then
         else
             hook.Run(own:IsPlayer() and "ScalePlayerDamage" or "ScaleNPCDamage", own, hitGroup, di)
         end
+        --print(di:GetDamage())
         --if not IsValid(own) then return end
         --[[local tbl = {}
         for _, func in ipairs(infos) do
@@ -1230,7 +1245,6 @@ if SERVER then
     
 
         ctrl:DoBrainDamages(di)
-
         ctrl.DI_MarkedAsTaken[di] = true
         own:TakeDamageInfo(di, true)
 
@@ -1583,6 +1597,7 @@ if SERVER then
     hook.Add("PostEntityTakeDamage", "Savee_AdvRagKnockdown_RagDamage", function(rag, di, take)
 
         if not cv_kd_enabled:GetBool() or cv_kd_damagecalc_usetakedamage:GetBool() then return end
+        --print("IC2")
     
         calcRagDamage(rag, di, take)
     

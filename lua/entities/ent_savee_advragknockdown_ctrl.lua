@@ -1015,6 +1015,7 @@ function ENT:Initialize()
     end
 
     rag:AddCallback("PhysicsCollide", function(rag, data)
+    
         -- 我不认为你高速创到一个灰尘会导致你昏厥, 我觉得该昏的是灰尘
         local pObj = data.PhysObject
         
@@ -1072,7 +1073,7 @@ function ENT:Initialize()
         di:SetInflictor(ent)
 
         --print(data.HitEntity)
-        own:TakeDamageInfo(di)
+        own:TakeDamageInfo(di, true)
     
     end)
 
@@ -1818,11 +1819,11 @@ function ENT:Tick()
     -- 等等, upvalue超了?
     -- 你的性能上有僵尸, 你的性能上有僵尸(?)
 
-    local torsoang, torsoangdamp, torsospd, torsospddamp, torsodampfactor, torsodelta = 1500, 1500, 0, 0, 0.8, 0.2
+    local torsoang, torsoangdamp, torsospd, torsospddamp, torsodampfactor, torsodelta = 150, 150, 0, 0, 0.8, 0.2
     --local torsomovespd, torsomovespddamp, torsomovespddelta = 450, 450, 0.2
     local headang, headangdamp, headspd, headspddamp, headdampfactor, headdelta = 50, 50, 0, 0, 1, 0.05
     local handang, handangdamp, handspd, handspddamp, handdampfactor, handdelta = 265, 265, 235, 235, 0.8, 0.2
-    local handaimang, handaimangdamp, handaimspd, handaimspddamp, handaimdampfactor, handaimdelta = 1200, 1000, 5, 0, 1, 0.1
+    local handaimang, handaimangdamp, handaimspd, handaimspddamp, handaimdampfactor, handaimdelta = 250, 200, 5, 0, 0, 0.1
     local pelvisang, pelvisangdamp, pelvisspd, pelvisspddamp, pelvisdampfactor, pelvisdelta = 0, 20, 0, 0, 0.8, 0.15
     local legang, legangdamp, legspd, legspddamp, legsdampfactor, legsdelta = 35, 10, 0, 0, 0.8, 0.2
 
