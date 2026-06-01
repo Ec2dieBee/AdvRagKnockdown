@@ -1203,8 +1203,6 @@ function ENT:HasKeyInput(key)
     return self.KeyInputs[key] or (own:IsPlayer() and own:KeyDown(key))
 end
 
-function ENT:GetRagdoll() end
-
 function ENT:TryGetUp(animTbl, forced)
 
     -- 在这插入检测
@@ -1798,8 +1796,8 @@ local legang, legangdamp, legspd, legspddamp, legsdampfactor, legsdelta = 140, 1
 local torsoUseMass = true
 local torsoMoveUseMass = true
 local headUseMass = true
-local handUseMass = false
-local handAimUseMass = true
+local handUseMass = true
+local handAimUseMass = false
 local pelvisUseMass = false
 local legUseMass = true
 local getupUseMass = true
@@ -1825,7 +1823,7 @@ function ENT:Tick()
     --local torsomovespd, torsomovespddamp, torsomovespddelta = 450, 450, 0.2
     local headang, headangdamp, headspd, headspddamp, headdampfactor, headdelta = 50, 50, 0, 0, 1, 0.05
     local handang, handangdamp, handspd, handspddamp, handdampfactor, handdelta = 265, 265, 235, 235, 0.8, 0.2
-    local handaimang, handaimangdamp, handaimspd, handaimspddamp, handaimdampfactor, handaimdelta = 250, 200, 5, 0, 1, 0.1
+    local handaimang, handaimangdamp, handaimspd, handaimspddamp, handaimdampfactor, handaimdelta = 350, 250, 0, 0, 0.8, 0.05
     local pelvisang, pelvisangdamp, pelvisspd, pelvisspddamp, pelvisdampfactor, pelvisdelta = 0, 20, 0, 0, 0.8, 0.15
     local legang, legangdamp, legspd, legspddamp, legsdampfactor, legsdelta = 35, 10, 0, 0, 0.8, 0.2
 
@@ -2456,8 +2454,9 @@ function ENT:Tick()
                 maxspeeddamp = 0,
                 maxangular = handaimang,
                 maxangulardamp = handaimangdamp,
-                dampfactor = 1,
-                delta = 0.1,
+                dampfactor = handaimdampfactor,
+                delta = handaimdelta,
+                addMass = handAimUseMass,
             }
             shadowCtrls["ValveBiped.Bip01_L_Forearm"] = {
                 --secondstoarrive = tickInterval / 10,
@@ -2467,8 +2466,9 @@ function ENT:Tick()
                 maxspeeddamp = 0,
                 maxangular = handaimang,
                 maxangulardamp = handaimangdamp,
-                dampfactor = 1,
-                delta = 0.1,
+                dampfactor = handaimdampfactor,
+                delta = handaimdelta,
+                addMass = handAimUseMass,
             }
             shadowCtrls["ValveBiped.Bip01_R_UpperArm"] = {
                 --secondstoarrive = tickInterval / 10,
@@ -2478,8 +2478,9 @@ function ENT:Tick()
                 maxspeeddamp = 0,
                 maxangular = handaimang,
                 maxangulardamp = handaimangdamp,
-                dampfactor = 1,
-                delta = 0.1,
+                dampfactor = handaimdampfactor,
+                delta = handaimdelta,
+                addMass = handAimUseMass,
             }
             shadowCtrls["ValveBiped.Bip01_R_Forearm"] = {
                 --secondstoarrive = tickInterval / 10,
@@ -2489,8 +2490,9 @@ function ENT:Tick()
                 maxspeeddamp = 0,
                 maxangular = handaimang,
                 maxangulardamp = handaimangdamp,
-                dampfactor = 1,
-                delta = 0.1,
+                dampfactor = handaimdampfactor,
+                delta = handaimdelta,
+                addMass = handAimUseMass,
             }
 
             --pObjs["ValveBiped.Bip01_R_UpperArm"].pObj:EnableMotion(!false)

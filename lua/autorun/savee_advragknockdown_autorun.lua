@@ -39,6 +39,19 @@ local npcMeta = FindMetaTable("NPC")
 
 local isSP = game.SinglePlayer()
 
+-- 防止你射的正爽的时候子弹从你的眼睛打到你的胳膊
+local whitelistedBones = {
+    ["ValveBiped.Bip01_Head1"] = true,
+    ["ValveBiped.Bip01_R_Clavicle"] = true,
+    ["ValveBiped.Bip01_R_UpperArm"] = true,
+    ["ValveBiped.Bip01_R_Forearm"] = true,
+    ["ValveBiped.Bip01_R_Hand"] = true,
+    ["ValveBiped.Bip01_L_Clavicle"] = true,
+    ["ValveBiped.Bip01_L_UpperArm"] = true,
+    ["ValveBiped.Bip01_L_Forearm"] = true,
+    ["ValveBiped.Bip01_L_Hand"] = true,
+}
+
 -- ToDo: 是否需要将NW换成NW2?
 
 --[[SAVEE_ADVRAGKNOCKDOWN_LIMBS = {
@@ -200,6 +213,32 @@ for _, str in ipairs(trs) do
             --print(111)
             data.filter = {ctrl:GetOwner(), ctrl:GetRagdoll()}
             --if SERVER then debug.Trace() end
+
+        elseif isfunction(filter) then
+
+            local newfunc = function(ent)
+                local ctrl = getController(ent)
+                if not IsValid(ctrl) then return filter(ent) end
+                local own, rag = ctrl:GetOwner(), ctrl:GetRagdoll()
+                local eyePos = own:EyePos()
+                local rHD = ctrl:GetRArmDelta()
+
+                local aimTr = util.TraceLine({
+                    start = eyePos,
+                    endpos = eyePos + ctrl:GetAimEyeAngles():Forward() * 65536,
+                    filter = own,
+                    mask = MASK_SHOT,
+                    getRaw = true,
+                })
+                --print(ent, aimTr.Entity, aimTr.Entity ~= rag)
+                if rHD <= 0.15 and (aimTr.Entity ~= rag or whitelistedBones[rag:GetBoneName(rag:TranslatePhysBoneToBone(aimTr.PhysicsBone) or -1)]) then
+                    return filter(own) and filter(rag)
+                end
+
+                return filter(ent)
+            end
+
+            data.filter = newfunc
 
         end
 
@@ -609,19 +648,6 @@ funchooks.Add("Player.IsPlayingTaunt", "Savee_AdvRagKnockdown_ARC9TPIK", functio
    
 
 end)
-
--- 防止你射的正爽的时候子弹从你的眼睛打到你的胳膊
-local whitelistedBones = {
-    ["ValveBiped.Bip01_Head1"] = true,
-    ["ValveBiped.Bip01_R_Clavicle"] = true,
-    ["ValveBiped.Bip01_R_UpperArm"] = true,
-    ["ValveBiped.Bip01_R_Forearm"] = true,
-    ["ValveBiped.Bip01_R_Hand"] = true,
-    ["ValveBiped.Bip01_L_Clavicle"] = true,
-    ["ValveBiped.Bip01_L_UpperArm"] = true,
-    ["ValveBiped.Bip01_L_Forearm"] = true,
-    ["ValveBiped.Bip01_L_Hand"] = true,
-}
 
 -- https://wiki.facepunch.com/gmod/GM:ScaleNPCDamage
 local function GetNPCDamageMultiplier(npc, iHitGroup, dmginfo)
