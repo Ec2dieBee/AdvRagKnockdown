@@ -819,7 +819,7 @@ function ENT:RemoveSelf(killOwner)
             own:TakeDamage(own:GetMaxHealth() * 2)
         end
     end 
-    self:Remove() --SafeRemoveEntityDelayed(self, tickInterval)
+    SafeRemoveEntity(self)
 end
 
 function ENT:Initialize()
