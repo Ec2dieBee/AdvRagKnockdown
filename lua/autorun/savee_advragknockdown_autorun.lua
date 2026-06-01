@@ -216,9 +216,12 @@ for _, str in ipairs(trs) do
 
         elseif isfunction(filter) then
 
+            local checked = {}
+
             local newfunc = function(ent)
                 local ctrl = getController(ent)
                 if not IsValid(ctrl) then return filter(ent) end
+                if checked[ctrl] ~= nil then return checked[ctrl] end
                 local own, rag = ctrl:GetOwner(), ctrl:GetRagdoll()
                 local eyePos = own:EyePos()
                 local rHD = ctrl:GetRArmDelta()
@@ -231,11 +234,15 @@ for _, str in ipairs(trs) do
                     getRaw = true,
                 })
                 --print(ent, aimTr.Entity, aimTr.Entity ~= rag)
+                local result
                 if rHD <= 0.15 and (aimTr.Entity ~= rag or whitelistedBones[rag:GetBoneName(rag:TranslatePhysBoneToBone(aimTr.PhysicsBone) or -1)]) then
-                    return filter(own) and filter(rag)
+                    result = filter(own) and filter(rag)
+                else
+                    result = filter(own)
                 end
 
-                return filter(ent)
+                checked[ctrl] = result
+                return result
             end
 
             data.filter = newfunc
