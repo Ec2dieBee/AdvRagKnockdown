@@ -205,8 +205,8 @@ local holdTypeActs = {
     ["magic"] = ACT_HL2MP_IDLE_MAGIC,
 }
 
-local twoArmAimDelta = Vector(5, 5, -6)
-local oneArmAimDelta = Vector(10, 5, -5)
+local twoArmAimDelta = Vector(5, 5, -7)
+local oneArmAimDelta = Vector(10, 5, -7)
 
 local aimPosDelta = {
     ["pistol"] = oneArmAimDelta,
@@ -498,6 +498,7 @@ ENT.Caches = {
     NPC_LastGoalUpdate = -1,
     NPC_LastCrawl = -1,
     NPC_ShouldRHand = false,
+    NearWalling = 0,
 }
 
 ENT.RagPObjs = {}
@@ -1589,8 +1590,8 @@ function ENT:Think()
         fakePly:SetPoseParameter("aim_yaw", own:GetPoseParameter("aim_yaw") or 0)
     end
 
-    local pelvisPos = rag:GetBonePosition(0)
     -- 检测
+    local pelvisPos = rag:GetBonePosition(0)
     local groundTr = util.TraceHull({
         start = pelvisPos,
         endpos = pelvisPos - Vector(0, 0, 64 * mdlScale),
@@ -1630,6 +1631,13 @@ function ENT:Think()
     end
     if self.NextRegenConsciousness <= ct then
         self:SetConsciousness(math.min(100, consc + 2))
+    end
+
+    if not self:ShouldUseCachedVar("NearWalling") then
+        local dist = 32 * mdlScale
+        local tr = util.QuickTrace(eyepos, aea:Forward() * dist, own)
+        --print((64 - tr.HitPos:Distance(eyepos)) / 64)
+        self:SetCachedVar("NearWalling", math.min((dist - tr.HitPos:Distance(eyepos)) / dist, 0.9), 0.2)
     end
 
     if consc < 25 then
@@ -1797,7 +1805,7 @@ local torsoUseMass = true
 local torsoMoveUseMass = true
 local headUseMass = true
 local handUseMass = true
-local handAimUseMass = false
+local handAimUseMass = true
 local pelvisUseMass = false
 local legUseMass = true
 local getupUseMass = true
@@ -1823,7 +1831,8 @@ function ENT:Tick()
     --local torsomovespd, torsomovespddamp, torsomovespddelta = 450, 450, 0.2
     local headang, headangdamp, headspd, headspddamp, headdampfactor, headdelta = 50, 50, 0, 0, 1, 0.05
     local handang, handangdamp, handspd, handspddamp, handdampfactor, handdelta = 265, 265, 235, 235, 0.8, 0.2
-    local handaimang, handaimangdamp, handaimspd, handaimspddamp, handaimdampfactor, handaimdelta = 350, 250, 0, 0, 0.8, 0.05
+    local handaimang, handaimangdamp, handaimspd, handaimspddamp, handaimdampfactor, handaimdelta = 550, 550, 5, 0, 0.8, 0.05
+    local armaimang, armaimangdamp, armaimspd, armaimspddamp, armaimdampfactor, armaimdelta = 150, 150, 0, 0, 0.5, 0.1
     local pelvisang, pelvisangdamp, pelvisspd, pelvisspddamp, pelvisdampfactor, pelvisdelta = 0, 20, 0, 0, 0.8, 0.15
     local legang, legangdamp, legspd, legspddamp, legsdampfactor, legsdelta = 35, 10, 0, 0, 0.8, 0.2
 
@@ -2425,9 +2434,10 @@ function ENT:Tick()
                 rhToLocalPos = rhToLocalPos
             else]]
            if not isMeleeHT then
+                local nearwalling = self:GetCachedVar("NearWalling")
                 -- 歪打正着
                 local wepDelta = (aimPosDelta[wepHT] or twoArmAimDelta) * mdlScale
-                rhToLocalPos = eyepos + aea:Forward() * wepDelta.x * (isPly and 1 or deltaedHT[wepHT] and 1 or 1.5) + aea:Right() * wepDelta.y * (isPly and 1 or wepDelta == twoArmAimDelta and 2 or 1) + aea:Up() * wepDelta.z * (isPly and 1 or 1)
+                rhToLocalPos = eyepos + aea:Forward() * wepDelta.x * (1 - nearwalling) * (isPly and 1 or deltaedHT[wepHT] and 1 or 1.5) + aea:Right() * wepDelta.y * (isPly and 1 or wepDelta == twoArmAimDelta and 2 or 1) + aea:Up() * wepDelta.z * (isPly and 1 or 1)
                 --rhToLocalPos = eyepos + aea:Forward() * wepDelta.x + aea:Right() * wepDelta.y + aea:Up() * wepDelta.z
             end
             --rhToLocalPos = rhToLocalPos + aea:Up() * 5
@@ -2443,8 +2453,8 @@ function ENT:Tick()
             local exRotate = torsoAngle.r
 
             -- speeddamp是他妈一坨屎, 这就是为什么我们要做100%橙汁(?????)啊不对角度运算
-            local angLUpperArm, angLForeArm = calcBasicArmIK(ragLUArmPos, ragLUArmAng, lhToLocalPos, mdlScale, 60 + exRotate, Angle(0, 0, -90))
-            local angRUpperArm, angRForeArm = calcBasicArmIK(ragRUArmPos, ragRUArmAng, rhToLocalPos, mdlScale, -60 + exRotate, Angle(0, 0, -90))
+            local angLUpperArm, angLForeArm = calcBasicArmIK(ragLUArmPos, ragLUArmAng, lhToLocalPos, mdlScale, 50 + exRotate, Angle(0, 0, -90))
+            local angRUpperArm, angRForeArm = calcBasicArmIK(ragRUArmPos, ragRUArmAng, rhToLocalPos, mdlScale, -50 + exRotate, Angle(0, 0, -90))
 
             shadowCtrls["ValveBiped.Bip01_L_UpperArm"] = {
                 --secondstoarrive = tickInterval / 10,
@@ -2452,10 +2462,10 @@ function ENT:Tick()
                 angle = angLUpperArm,
                 maxspeed = 0,
                 maxspeeddamp = 0,
-                maxangular = handaimang,
-                maxangulardamp = handaimangdamp,
-                dampfactor = handaimdampfactor,
-                delta = handaimdelta,
+                maxangular = armaimang,
+                maxangulardamp = armaimangdamp,
+                dampfactor = armaimdampfactor,
+                delta = armaimdelta,
                 addMass = handAimUseMass,
             }
             shadowCtrls["ValveBiped.Bip01_L_Forearm"] = {
@@ -2464,10 +2474,10 @@ function ENT:Tick()
                 angle = angLForeArm,
                 maxspeed = 0,
                 maxspeeddamp = 0,
-                maxangular = handaimang,
-                maxangulardamp = handaimangdamp,
-                dampfactor = handaimdampfactor,
-                delta = handaimdelta,
+                maxangular = armaimang,
+                maxangulardamp = armaimangdamp,
+                dampfactor = armaimdampfactor,
+                delta = armaimdelta,
                 addMass = handAimUseMass,
             }
             shadowCtrls["ValveBiped.Bip01_R_UpperArm"] = {
@@ -2476,10 +2486,10 @@ function ENT:Tick()
                 angle = angRUpperArm,
                 maxspeed = 0,
                 maxspeeddamp = 0,
-                maxangular = handaimang,
-                maxangulardamp = handaimangdamp,
-                dampfactor = handaimdampfactor,
-                delta = handaimdelta,
+                maxangular = armaimang,
+                maxangulardamp = armaimangdamp,
+                dampfactor = armaimdampfactor,
+                delta = armaimdelta,
                 addMass = handAimUseMass,
             }
             shadowCtrls["ValveBiped.Bip01_R_Forearm"] = {
@@ -2488,10 +2498,10 @@ function ENT:Tick()
                 angle = angRForeArm,
                 maxspeed = 0,
                 maxspeeddamp = 0,
-                maxangular = handaimang,
-                maxangulardamp = handaimangdamp,
-                dampfactor = handaimdampfactor,
-                delta = handaimdelta,
+                maxangular = armaimang,
+                maxangulardamp = armaimangdamp,
+                dampfactor = armaimdampfactor,
+                delta = armaimdelta,
                 addMass = handAimUseMass,
             }
 

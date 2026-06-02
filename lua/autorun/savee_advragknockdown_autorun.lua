@@ -1236,7 +1236,7 @@ if SERVER then
         -- ToDo: 伤害计算优化
         --print(atk:IsWorld())
         --print(atk, (atk:IsWorld() or (atk:CreatedByMap() and atk:GetMoveType() ~= MOVETYPE_VPHYSICS) or atk:IsRagdoll()) and (di:IsDamageType(DMG_CRUSH) or di:IsDamageType(DMG_FALL)))
-        if atk:IsWorld() or (IsValid(atk) and (atk:GetSolid() == SOLID_VPHYSICS or atk:IsRagdoll() or atk:CreatedByMap())) then
+        if atk:IsWorld() or (IsValid(atk) and (atk:GetSolid() == SOLID_VPHYSICS and (atk:IsRagdoll() or atk:CreatedByMap()))) then
             return
             --[[local pObj = rag:GetPhysicsObjectNum(rag:TranslateBoneToPhysBone(nearestBone(rag, di:GetDamagePosition()))) or rag:GetPhysicsObject()
 
@@ -1290,7 +1290,6 @@ if SERVER then
         ctrl.DI_GoingToTake[#ctrl.DI_GoingToTake + 1] = tbl
         ctrl.DI_MarkedAsTaken[di] = true]]
     
-
         ctrl:DoBrainDamages(di)
         ctrl.DI_MarkedAsTaken[di] = true
         own:TakeDamageInfo(di, true)
@@ -1640,7 +1639,6 @@ if SERVER then
 
         if not cv_kd_enabled:GetBool() or cv_kd_damagecalc_usetakedamage:GetBool() then return end
         --print("IC2")
-    
         calcRagDamage(rag, di, take)
     
     end)
