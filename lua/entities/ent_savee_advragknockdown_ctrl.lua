@@ -814,12 +814,16 @@ function ENT:RemoveSelf(killOwner)
     if CLIENT then return end
     local own = self:GetOwner()
     if killOwner and IsValid(own) then
+        --[[for _, c in ipairs(self:GetChildren()) do
+            if not IsValid(c) then continue end
+            c:SetMoveParent(own)
+        end]]
         if own:IsPlayer() then    
             own:Kill()
         else
             own:TakeDamage(own:GetMaxHealth() * 2)
         end
-    end 
+    end
     SafeRemoveEntity(self)
 end
 
@@ -890,8 +894,8 @@ function ENT:Initialize()
     rag:SetPos(self:GetPos())
     rag:SetAngles(own:GetAngles())
     rag:SetNoDraw(true)
-    rag:AddEffects(EF_BONEMERGE)
-    rag:SetParent(own)
+    --rag:AddEffects(EF_BONEMERGE)
+    --rag:SetParent(own)
 
     cloneAtoB(own, rag)
     --rag:RemoveFlags(FL_OBJECT)
@@ -918,9 +922,9 @@ function ENT:Initialize()
     if own:IsNPC() and getCV("npc_usehook_createentityragdoll", "Bool") then
         hook.Run("CreateEntityRagdoll", own, rag, true)
     end
-    rag:SetParent(nil)
-    rag:RemoveEffects(EF_BONEMERGE)
-    rag:AddEffects(EFL_DONTBLOCKLOS)
+    --rag:SetParent(nil)
+    --rag:RemoveEffects(EF_BONEMERGE)
+    --rag:AddEffects(EFL_DONTBLOCKLOS)
     --rag:AddFlags(FL_NOTARGET)
     --rag:RemoveFlags(FL_OBJECT)
     rag:SetCollisionGroup(COLLISION_GROUP_INTERACTIVE_DEBRIS)
@@ -1100,18 +1104,27 @@ function ENT:Initialize()
 
     --own:FollowBone(rag, rag:LookupBone("ValveBiped.Bip01_R_Hand"))
     own:SetNW2Entity("Savee_AdvRagKnockdown_Controller", self)
-    own:AddEffects(EF_BONEMERGE)
-    own:AddEffects(EF_BONEMERGE_FASTCULL)
+    --own:AddEffects(EF_BONEMERGE_FASTCULL)
     --print(self, "设置父级", own, rag)
     --if own:IsNPC() then
-        --own:FollowBone(rag, 1)
+    --own:FollowBone(rag, 1)
     --else
-        own:SetParent(rag)
+    --PrintTable(own:GetChildren())
+    --childs[#childs + 1] = own:GetInternalVariable("m_hMoveChild")
+
+    -- 看起来是SetMoveParent太早导致的VPhysics.dll抽风(access violation exception)
+    -- 在sa_03测试了, 击杀3-4个盾兵并未发生崩溃情况(老方法会崩溃, 参见autorun.lua)
+    -- 我就一会点GmosLua的苦逼高中生, C艹这些玩意交给高人解决吧(奈莉看完也4了.jpg)
+    timer.Simple(tickInterval, function() 
+        if not IsValid(self) then return end
+        own:SetMoveParent(rag)
+    end)
     --end
     self.m_iOwnMoveType = own:GetMoveType()
     self.m_iOwnCollisionGroup = own:GetCollisionGroup()
-    own:SetMoveType(MOVETYPE_NONE)
     own:SetCollisionGroup(COLLISION_GROUP_IN_VEHICLE)
+    own:SetMoveType(MOVETYPE_NONE)
+    own:AddEffects(EF_BONEMERGE)
     --own:SetNoDraw()
 
     --if own:IsPlayer() then
@@ -1159,7 +1172,7 @@ function ENT:Initialize()
 
     if not own:IsPlayer() then 
         self.UsePlayerAimAnimation = aimBlock
-        self:SetCachedVar("NPC_CanGetUpVar", false, math.Rand(1, 5))
+        self:SetCachedVar("NPC_CanGetUpVar", false, math.Rand(2, 5))
         --return
     else
         self:AddEFlags(EFL_KEEP_ON_RECREATE_ENTITIES)
@@ -1320,7 +1333,7 @@ function ENT:OnRemove()
 
         if own:GetMoveParent() == rag then
             own:RemoveEffects(EF_BONEMERGE)
-            own:RemoveEffects(EF_BONEMERGE_FASTCULL)
+            --own:RemoveEffects(EF_BONEMERGE_FASTCULL)
             own:SetParent(nil)
             -- DEBUG
             --own:SetPos(self:GetRagdoll():GetPos())
@@ -1676,7 +1689,7 @@ function ENT:Think()
 
             own:SetParent(nil)
             own:RemoveEffects(EF_BONEMERGE)
-            own:RemoveEffects(EF_BONEMERGE_FASTCULL)
+            --own:RemoveEffects(EF_BONEMERGE_FASTCULL)
             own:SetPos(tr.HitPos, true)
             own:SetAngles(self.GettingUp_FaceAng)
             own:SetLocalVelocity(Vector())

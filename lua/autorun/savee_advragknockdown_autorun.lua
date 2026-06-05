@@ -19,6 +19,7 @@ local cvTags = {FCVAR_ARCHIVE,FCVAR_REPLICATED}
 
 -- 证明我抄袭了RagKnockdown的有力证据
 local cv_kd_enabled = CreateConVar(cvPrefix .. "enabled", 1, cvTags, "字面意思, 除了typo", 0, 1)
+--local cv_kd_delayedknockdown = CreateConVar(cvPrefix .. "knockdown_delayedknockdown", 1, cvTags, "字面意思, 除了typo", 0, 1)
 local cv_kd_enabled_ply = CreateConVar(cvPrefix .. "enableply", 1, cvTags, "字面意思, 除了typo", 0, 1)
 local cv_kd_enabled_npc = CreateConVar(cvPrefix .. "enablenpc", 1, cvTags, "字面意思, 除了typo", 0, 1)
 local cv_kd_damagecalc_usetakedamage = CreateConVar(cvPrefix .. "damagecalc_usetakedamage", 0, cvTags, "使用TakeDamageInfo并更进一步修改BulletTable, 可能会出现没受到伤害且力度不够时仍被击倒的情况", 0, 1)
@@ -1059,13 +1060,14 @@ if SERVER then
             end
         end
         
-        if ply:IsNPC() then 
+        --[[if ply:IsNPC() then 
             -- sa_03
             for _, e in pairs(ents.FindInSphere(ply:GetPos(), 512)) do
                 if IsValid(e) and e:CreatedByMap() and e:GetParent() == ply then return end
+                --if e:GetMoveParent() == ply then print(e) end
             end
             --return
-        end
+        end]]
 
         if ply:IsPlayer() and ply:InVehicle() then
             local can = hook.Run("CanExitVehicle", ply:GetVehicle(), ply)
@@ -1177,7 +1179,7 @@ if SERVER then
         --do return end
 
         ---@type Entity
-        local ctrl = rag.Savee_AdvRagKnockdown_Controller
+        local ctrl = getController(rag)
         if not IsValid(ctrl) then return end
         --print(di, rag, ctrl.DI_MarkedAsTaken[di])
 
@@ -1322,13 +1324,14 @@ if SERVER then
         --if ent:IsPlayer() and ent:Health() > 35 then return end
         --if ent:IsPlayer() then return end
 
-        if not entTypeCheck(ent) then return end
+        if not entTypeCheck(ent) or IsValid(getController(ent)) then return end
 
         
         local dmg = di:GetDamage()
+        local hp = ent:Health()
+        if hp <= 0 or dmg >= hp then return end
         --print(ent:Health())
         if dmg <= 10 and di:GetDamageForce():Length() < 2500 then return end
-        if ent:Health() <= 0 then return end
         --if dmg >= ent:Health() or ent:Health() <= 0 then return end
         --print("我要被踹翻了Help: ", ent, di)
 
@@ -1637,7 +1640,7 @@ if SERVER then
 
     hook.Add("PostEntityTakeDamage", "Savee_AdvRagKnockdown_RagDamage", function(rag, di, take)
 
-        if not cv_kd_enabled:GetBool() or cv_kd_damagecalc_usetakedamage:GetBool() then return end
+        if not cv_kd_enabled:GetBool() or cv_kd_damagecalc_usetakedamage:GetBool() or rag:IsMarkedForDeletion() then return end
         --print("IC2")
         calcRagDamage(rag, di, take)
     
@@ -1645,7 +1648,7 @@ if SERVER then
 
     hook.Add("PostEntityTakeDamage", "Savee_AdvRagKnockdown_Knockdown", function(ent, di, take)
 
-        if not cv_kd_enabled:GetBool() then return end
+        if not cv_kd_enabled:GetBool() or ent:IsMarkedForDeletion() then return end
         if cv_kd_damagecalc_usetakedamage:GetBool() then return end
 
         doKnockdownDetection(ent, di, take)
