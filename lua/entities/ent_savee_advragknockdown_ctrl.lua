@@ -353,6 +353,7 @@ local function cloneAtoB(b, a)
 	a:SetModel(b:GetModel())
 	a:SetMaterial(b:GetMaterial())
 	a:SetSkin(b:GetSkin())
+    a:SetColor(b:GetColor())
 	--a:SetSubMaterial(number index=nil, string material=nil)
 	for i = 0, #b:GetBodyGroups() - 1 do --测试得出的是能设置的比总数少1
 		a:SetBodygroup(i, b:GetBodygroup(i))
@@ -1118,6 +1119,7 @@ function ENT:Initialize()
     timer.Simple(tickInterval, function() 
         if not IsValid(self) then return end
         own:SetMoveParent(rag)
+        self.Initialized = true
     end)
     --end
     self.m_iOwnMoveType = own:GetMoveType()
@@ -1869,8 +1871,6 @@ function ENT:Tick()
     local wepHT
     local isPly = own:IsPlayer()
     local caches = self.Caches
-    local stamina = self:GetStamina()
-    local consc = self:GetConsciousness()
 
     --local av = own:GetAimVector()
     local aea = self:GetAimEyeAngles()
@@ -1966,7 +1966,7 @@ function ENT:Tick()
         --print(1)
         wepHT = "fist"
         local en = own:GetEnemy()
-        noArm = not IsValid(en) or own:GetPos():Distance(en:GetPos() or vector_origin) > 500
+        noArm = not IsValid(en)
     end
 
     if consc < noArmVal then noArm = true end
@@ -2034,7 +2034,7 @@ function ENT:Tick()
     --print(1)
 
     --AddOriginToPVS(eyepos)
-    own:SetPos(eyepos + (aea:Forward() * 5) * math.max(1, mdlScale), true)
+    own:SetPos(eyepos + (aea:Forward() * 7) * math.max(1, mdlScale), true)
 
     --local head = pObjs["ValveBiped.Bip01_Head1"] and pObjs["ValveBiped.Bip01_Head1"].pObj
     --local headMass = head and head:GetMass() or 0

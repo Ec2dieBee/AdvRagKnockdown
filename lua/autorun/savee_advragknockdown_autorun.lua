@@ -128,7 +128,7 @@ local function debugTrace()
 
 	local str = ""
 
-	while true do
+	while level <= 8 do
 
 		local info = debug.getinfo( level, "Sln" )
 		if ( !info ) then break end
@@ -1329,7 +1329,7 @@ if SERVER then
         
         local dmg = di:GetDamage()
         local hp = ent:Health()
-        if hp <= 0 or dmg >= hp then return end
+        if hp <= 0 then return end
         --print(ent:Health())
         if dmg <= 10 and di:GetDamageForce():Length() < 2500 then return end
         --if dmg >= ent:Health() or ent:Health() <= 0 then return end
