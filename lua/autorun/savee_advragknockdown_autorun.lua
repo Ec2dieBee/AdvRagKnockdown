@@ -1600,6 +1600,7 @@ if SERVER then
         ---@type Entity
         local ctrl = ent.Savee_AdvRagKnockdown_Controller
         if fucked or not IsValid(ctrl) or dRag:IsMarkedForDeletion() then return end
+
         --do dRag:Remove() return end
 
         --ent:SetParent(nil)
@@ -1618,6 +1619,8 @@ if SERVER then
             pObj:Wake()
             pObj:SetVelocity(rag:GetPhysicsObjectNum(i):GetVelocity())
         end
+
+        ctrl:RemoveSelf()
 
     end)
     hook.Add("CanPlayerEnterVehicle", "Savee_AdvRagKnockdown_NoVehicle", function(ply)

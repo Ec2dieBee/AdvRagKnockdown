@@ -814,15 +814,20 @@ end
 function ENT:RemoveSelf(killOwner)
     if CLIENT then return end
     local own = self:GetOwner()
-    if killOwner and IsValid(own) then
+    if IsValid(own) then
+        own:RemoveEffects(EF_BONEMERGE)
+        own:SetParent(nil)
+        --own:SetPos(rag:GetPos())
         --[[for _, c in ipairs(self:GetChildren()) do
             if not IsValid(c) then continue end
             c:SetMoveParent(own)
         end]]
-        if own:IsPlayer() then    
-            own:Kill()
-        else
-            own:TakeDamage(own:GetMaxHealth() * 2)
+        if killOwner then
+            if own:IsPlayer() then    
+                own:Kill()
+            else
+                own:TakeDamage(own:GetMaxHealth() * 2)
+            end
         end
     end
     SafeRemoveEntity(self)
