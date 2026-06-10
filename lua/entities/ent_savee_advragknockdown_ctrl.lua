@@ -830,6 +830,7 @@ function ENT:RemoveSelf(killOwner)
             end
         end
     end
+    --self:Remove()
     SafeRemoveEntity(self)
 end
 
@@ -1677,7 +1678,7 @@ function ENT:Think()
         
         local animData = self.CurGetUpAnimData
 
-        local myMdl, animMdl = self:GetModel(), animData.Model
+        --local myMdl, animMdl = self:GetModel(), animData.Model
         local cyc = anim:GetCycle()
         --print(cyc, animData.Recover[2])
 
@@ -1697,13 +1698,16 @@ function ENT:Think()
             own:SetParent(nil)
             own:RemoveEffects(EF_BONEMERGE)
             --own:RemoveEffects(EF_BONEMERGE_FASTCULL)
-            own:SetPos(tr.HitPos, true)
-            own:SetAngles(self.GettingUp_FaceAng)
-            own:SetLocalVelocity(Vector())
             rag:SetVelocity(Vector())
             self:SetVelocity(Vector())
             self:RemoveSelf()
-            --return
+            timer.Simple(tickInterval, function()
+                if not IsValid(own) then return end
+                own:SetPos(tr.HitPos, true)
+                own:SetAngles(self.GettingUp_FaceAng)
+                own:SetLocalVelocity(Vector())
+            end)
+            return
         elseif cyc >= animData.Recover[1] and self:GetParent() == rag then
 
             local ang = self:GetAimEyeAngles()
