@@ -315,9 +315,9 @@ end
 
 --print(funchooks.GetRawFunction("util.TraceLine"))
 
-funchooks.Add("Entity.GetPos", "Savee_AdvRagKnockdown_Sync", function(ent, raw, ...)
+--[[funchooks.Add("Entity.GetPos", "Savee_AdvRagKnockdown_Sync", function(ent, raw, ...)
 
-    if raw or not entTypeCheck(ent) then return __undetoured(ent, raw, ...) end
+    if true or raw or not entTypeCheck(ent) then return __undetoured(ent, raw, ...) end
     local ctrl = getController(ent)
     if not IsValid(ctrl) then return __undetoured(ent, raw, ...) end
     local rag = ctrl:GetRagdoll()
@@ -325,7 +325,7 @@ funchooks.Add("Entity.GetPos", "Savee_AdvRagKnockdown_Sync", function(ent, raw, 
 
     return bone
    
-end)
+end)]]
 
 local doOriginalHTs = {
     ["knife"] = true,

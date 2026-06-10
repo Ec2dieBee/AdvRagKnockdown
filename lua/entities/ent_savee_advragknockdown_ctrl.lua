@@ -1205,6 +1205,7 @@ end
 
 function ENT:SetupDataTables()
     self:NetworkVar("Bool", 0, "AimingWeapon")
+    --self:NetworkVar("Bool", 1, "OnGround")
     self:NetworkVar("Entity", 0, "Ragdoll")
     self:NetworkVar("Float", 0, "LArmDelta")
     self:NetworkVar("Float", 1, "RArmDelta")
@@ -1449,10 +1450,25 @@ end
 local bound = Vector(3, 3, 3)
 
 function ENT:Think()
-    if CLIENT then return true end
     local ct = CurTime()
 
     local own = self:GetOwner()
+    local rag = self:GetRagdoll()
+
+    if CLIENT then 
+        if not IsValid(rag) then return true end
+
+        local flOnGround = self:IsFlagSet(FL_ONGROUND)
+        local nwOnGround = self:GetNW2Bool("Savee_AdvRagKnockdown_OnGround")
+
+        if nwOnGround and not flOnGround then
+            rag:AddFlags(FL_ONGROUND)
+        elseif flOnGround then
+            rag:RemoveFlags(FL_ONGROUND)
+        end
+
+        return true 
+    end
     if not IsValid(own) or own:Health() <= 0 or (own:IsPlayer() and not own:Alive()) then self:RemoveSelf() return end
     local isPly = own:IsPlayer()
 
@@ -1634,6 +1650,16 @@ function ENT:Think()
         end
     end
     self.OnGroundState = math.Approach(self.OnGroundState, newOGS, hit and 0.25 or 0.35)
+
+    local flOnGround = self:IsFlagSet(FL_ONGROUND)
+
+    if self.OnGroundState >= 0.6 and not flOnGround then
+        rag:AddFlags(FL_ONGROUND)
+        self:SetNW2Bool("Savee_AdvRagKnockdown_OnGround", true)
+    elseif flOnGround then
+        rag:RemoveFlags(FL_ONGROUND)
+        self:SetNW2Bool("Savee_AdvRagKnockdown_OnGround", false)
+    end
     --print(self.OnGroundState)
 
     --print(hit)
@@ -1664,6 +1690,8 @@ function ENT:Think()
     if consc < 25 then
         self:SetAimingWeapon(false)
     end
+
+    --print(rag:OnGround())
 
     -- 起身
     if self.GettingUp and not self:ShouldGetUp() then
@@ -1701,10 +1729,11 @@ function ENT:Think()
             rag:SetVelocity(Vector())
             self:SetVelocity(Vector())
             self:RemoveSelf()
+            local faceAng = self.GettingUp_FaceAng
             timer.Simple(tickInterval, function()
                 if not IsValid(own) then return end
                 own:SetPos(tr.HitPos, true)
-                own:SetAngles(self.GettingUp_FaceAng)
+                own:SetAngles(faceAng)
                 own:SetLocalVelocity(Vector())
             end)
             return
