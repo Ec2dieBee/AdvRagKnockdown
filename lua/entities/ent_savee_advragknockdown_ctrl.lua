@@ -354,6 +354,9 @@ local function cloneAtoB(b, a)
 	a:SetMaterial(b:GetMaterial())
 	a:SetSkin(b:GetSkin())
     a:SetColor(b:GetColor())
+
+    a:SetRenderMode(b:GetRenderMode())
+    a:SetRenderFX(b:GetRenderFX())
 	--a:SetSubMaterial(number index=nil, string material=nil)
 	for i = 0, #b:GetBodyGroups() - 1 do --测试得出的是能设置的比总数少1
 		a:SetBodygroup(i, b:GetBodygroup(i))
@@ -361,6 +364,14 @@ local function cloneAtoB(b, a)
 	for i = 0, #b:GetMaterials() - 1 do
 		a:SetSubMaterial(i, b:GetSubMaterial(i))
 	end
+    if b:HasBoneManipulations() then
+	    for i = 0, b:GetBoneCount() - 1 do
+	    	a:ManipulateBonePosition(i, b:GetManipulateBonePosition(i))
+	    	a:ManipulateBoneAngles(i, b:GetManipulateBoneAngles(i))
+	    	a:ManipulateBoneScale(i, b:GetManipulateBoneScale(i))
+	    	a:ManipulateBoneJiggle(i, b:GetManipulateBoneJiggle(i))
+	    end
+    end
 	
 end
 
@@ -484,6 +495,8 @@ ENT.NextSetLArmDelta = -1
 ENT.NextSetRArmDelta = -1
 ENT.CanSetLArmDelta = true
 ENT.CanSetRArmDelta = true
+
+ENT.CustomOwnerRenderOverride = nil
 
 ENT.RagPhysDmgTakenCount = 0
 
@@ -814,10 +827,10 @@ end
 function ENT:RemoveSelf(killOwner)
     if CLIENT then return end
     local own = self:GetOwner()
+    local rag = self:GetRagdoll()
     if IsValid(own) then
         own:RemoveEffects(EF_BONEMERGE)
         own:SetParent(nil)
-        --own:SetPos(rag:GetPos())
         --[[for _, c in ipairs(self:GetChildren()) do
             if not IsValid(c) then continue end
             c:SetMoveParent(own)
@@ -830,8 +843,8 @@ function ENT:RemoveSelf(killOwner)
             end
         end
     end
-    --self:Remove()
-    SafeRemoveEntity(self)
+    self:Remove()
+    --SafeRemoveEntity(self)
 end
 
 function ENT:Initialize()
@@ -888,6 +901,9 @@ function ENT:Initialize()
 
     self:SetModel(own:GetModel())
     self:SetSequence(own:GetSequence())
+    self:DrawShadow(false)
+    self:AddEffects(EF_NOSHADOW)
+    self:AddEffects(EF_NORECEIVESHADOW)
 
     self:SetPlaybackRate(1)
     self:SetCycle(own:GetCycle())
@@ -900,7 +916,7 @@ function ENT:Initialize()
     rag:SetModel(own:GetModel())
     rag:SetPos(self:GetPos())
     rag:SetAngles(own:GetAngles())
-    rag:SetNoDraw(true)
+    --rag:SetNoDraw(true)
     --rag:AddEffects(EF_BONEMERGE)
     --rag:SetParent(own)
 
@@ -1111,19 +1127,18 @@ function ENT:Initialize()
 
     --own:FollowBone(rag, rag:LookupBone("ValveBiped.Bip01_R_Hand"))
     own:SetNW2Entity("Savee_AdvRagKnockdown_Controller", self)
-    --own:AddEffects(EF_BONEMERGE_FASTCULL)
     --print(self, "设置父级", own, rag)
     --if own:IsNPC() then
     --own:FollowBone(rag, 1)
     --else
     --PrintTable(own:GetChildren())
     --childs[#childs + 1] = own:GetInternalVariable("m_hMoveChild")
-
+    
     -- 看起来是SetMoveParent太早导致的VPhysics.dll抽风(access violation exception)
     -- 在sa_03测试了, 击杀3-4个盾兵并未发生崩溃情况(老方法会崩溃, 参见autorun.lua)
     -- 我就一会点GmosLua的苦逼高中生, C艹这些玩意交给高人解决吧(奈莉看完也4了.jpg)
     timer.Simple(tickInterval, function() 
-        if not IsValid(self) then return end
+    if not IsValid(self) then return end
         own:SetMoveParent(rag)
         self.Initialized = true
     end)
@@ -1133,6 +1148,7 @@ function ENT:Initialize()
     own:SetCollisionGroup(COLLISION_GROUP_IN_VEHICLE)
     own:SetMoveType(MOVETYPE_NONE)
     own:AddEffects(EF_BONEMERGE)
+    own:AddEffects(EF_BONEMERGE_FASTCULL)
     --own:SetNoDraw()
 
     --if own:IsPlayer() then
@@ -1337,12 +1353,12 @@ function ENT:OnRemove()
         if own:IsPlayer() then
             local aea = self:GetAimEyeAngles()
             aea.r = 0
-            own:SetEyeAngles(aea)
+            own:SetEyeAngles(aea, true)
         end
 
         if own:GetMoveParent() == rag then
             own:RemoveEffects(EF_BONEMERGE)
-            --own:RemoveEffects(EF_BONEMERGE_FASTCULL)
+            own:RemoveEffects(EF_BONEMERGE_FASTCULL)
             own:SetParent(nil)
             -- DEBUG
             --own:SetPos(self:GetRagdoll():GetPos())
@@ -1361,15 +1377,6 @@ function ENT:OnRemove()
     --if IsValid(self.FakePlyModel) then SafeRemoveEntityDelayed(self.FakePlyModel, 0) end
     
     
-
-end
-
-function ENT:RagRenderOverride(rag)
-
-    local own = self:GetOwner()
-    if own == LocalPlayer() then
-        own:DrawModel()
-    end
 
 end
 
@@ -1456,7 +1463,7 @@ function ENT:Think()
     local rag = self:GetRagdoll()
 
     if CLIENT then 
-        if not IsValid(rag) then return true end
+        if not IsValid(rag) or not IsValid(own) then return true end
 
         local flOnGround = self:IsFlagSet(FL_ONGROUND)
         local nwOnGround = self:GetNW2Bool("Savee_AdvRagKnockdown_OnGround")
@@ -1466,6 +1473,17 @@ function ENT:Think()
         elseif flOnGround then
             rag:RemoveFlags(FL_ONGROUND)
         end
+
+        if own:IsPlayer() and not rag.GetPlayerColor then
+            function rag:GetPlayerColor()
+                return own:GetPlayerColor()
+            end
+        end
+        if rag.RenderOverride ~= self.CustomRagRenderOverride then
+            rag.RenderOverride = self.CustomRagRenderOverride
+        end
+
+        rag:SetFlexScale(own:GetFlexScale())
 
         return true 
     end
@@ -1498,13 +1516,6 @@ function ENT:Think()
     local stamina, consc = self:GetStamina(), self:GetConsciousness()
     
     local mdlScale = rag.Savee_AdvRagKnockdown_ModelScale
-
-
-    --[[if self.NextCache <= ct then
-        if not isPly then
-
-        self.NextCache = ct + 0.5
-    end]]
 
     -- NPCNPCNPC
     if not isPly then
@@ -1561,15 +1572,9 @@ function ENT:Think()
             --print(1)
         end
 
-    elseif own:GetMoveParent() == rag then
-        local av = own:GetAimVector()
-        --own:SetLocalPos(Vector(0, 0, 0), true)
-        --own:SetPos(own:EyePos(), true)
-        own:SetEyeAngles(av:Angle())
-        own:SetLocalAngles(Angle())
     else
-        self:RemoveSelf()
-        return
+        local av = own:GetAimVector()
+        own:SetEyeAngles(av:Angle(), true)
     end
 
 
@@ -1724,8 +1729,6 @@ function ENT:Think()
             --print(self, "我彻底起来了", own, rag)
 
             own:SetParent(nil)
-            own:RemoveEffects(EF_BONEMERGE)
-            --own:RemoveEffects(EF_BONEMERGE_FASTCULL)
             rag:SetVelocity(Vector())
             self:SetVelocity(Vector())
             self:RemoveSelf()
@@ -1754,7 +1757,7 @@ function ENT:Think()
 
             self:SetParent(nil)
             self:SetPos(tr.HitPos + Vector(0, 0, 0.2))
-            self:SetAngles(self.GettingUp_FaceAng)
+            self:SetAngles(ang)
             self:SetModel(own:GetModel())
             self:SetSequence(own:GetSequence())
             self:SetPlaybackRate(own:GetPlaybackRate())
@@ -1762,7 +1765,7 @@ function ENT:Think()
             self:SetPoseParameter("aim_pitch", own:GetPoseParameter("aim_pitch"))
             self:SetPoseParameter("aim_yaw", own:GetPoseParameter("aim_yaw"))
             self.GettingUp_SyncingToOwner = true
-            own:SetAngles(self.GettingUp_FaceAng)
+            --own:SetAngles(self.GettingUp_FaceAng)
             --self:SetNoDraw(false)
         elseif cyc >= animData.Recover[1] then
             self:SetPoseParameter("aim_pitch", own:GetPoseParameter("aim_pitch"))
@@ -1871,7 +1874,7 @@ function ENT:Tick()
 
     self.VarCaches = {}
 
-    if CLIENT then return end
+    if CLIENT or not self.Initialized then return end
 
     --print("1")
     --print(self:GetAimingWeapon())
@@ -1886,7 +1889,7 @@ function ENT:Tick()
     local handang, handangdamp, handspd, handspddamp, handdampfactor, handdelta = 265, 265, 235, 235, 0.8, 0.2
     local handaimang, handaimangdamp, handaimspd, handaimspddamp, handaimdampfactor, handaimdelta = 550, 550, 5, 0, 0.8, 0.05
     local armaimang, armaimangdamp, armaimspd, armaimspddamp, armaimdampfactor, armaimdelta = 150, 150, 0, 0, 0.5, 0.1
-    local pelvisang, pelvisangdamp, pelvisspd, pelvisspddamp, pelvisdampfactor, pelvisdelta = 0, 20, 0, 0, 0.8, 0.15
+    local pelvisang, pelvisangdamp, pelvisspd, pelvisspddamp, pelvisdampfactor, pelvisdelta = 0, 10, 0, 0, 0.8, 0.15
     local legang, legangdamp, legspd, legspddamp, legsdampfactor, legsdelta = 35, 10, 0, 0, 0.8, 0.2
 
     local npcForceMul = 1
@@ -1896,12 +1899,20 @@ function ENT:Tick()
     --self:SetAimEyeAngles(Angle())
 
     ---@type Entity
+    local own = self:GetOwner()
+    ---@type Entity
     local rag = self:GetRagdoll()
+
+    if self.Initialized and own:GetMoveParent() ~= rag then
+        self:RemoveSelf()
+        return
+    elseif not own:IsEffectActive(EF_BONEMERGE) then
+        own:AddEffects(EF_BONEMERGE)
+    end
     --rag:SetFriction(10)
 
     --print(rag:GetVelocity())
     local mdlScale = rag.Savee_AdvRagKnockdown_ModelScale
-    local own = self:GetOwner()
 
     local wep = own:GetActiveWeapon()
     local noArm = true --noAimHTs[wepHT]
@@ -3229,6 +3240,8 @@ function ENT:Tick()
 
     ---不要在EntityTakeDamage里叫他, 不然将会有**夏哈塔遭难的一天**(@RagKnockdown)
     ---这就是为什么我选择这个傻逼方法做
+    ---26.6.13: 可能是因为神秘游戏问题导致的, RKD里也有
+    -- 每次殴打NPC超过一定时间就会爆炸
     --[[for _, diInfo in ipairs(self.DI_GoingToTake) do
         local di = DamageInfo()
         for key, val in pairs(diInfo) do
@@ -3274,67 +3287,93 @@ local shouldDrawVM
 
 local huge = math.huge
 function ENT:Draw(fl)
-    --do return end
-    --print(1)
     local own = self:GetOwner()
-    --print(1)
-    if own ~= LocalPlayer():GetViewEntity() or not shouldDrawVM then return end
-    local rag = self:GetRagdoll()
-    if not IsValid(rag) then return end
-
-    local ent = self.FakePlyModel
-    if not IsValid(ent) then 
-        ent = ClientsideModel(own:GetModel(), RENDERGROUP_VIEWMODEL)
-        cloneAtoB(rag, ent)
-        ent:SetNoDraw(true)
-        self.FakePlyModel = ent
-        ent:SetParent(rag)
-        ent:SetLocalPos(Vector())
-        ent:SetTransmitWithParent(true)
-        --ent:AddEffects(EF_BONEMERGE)
+    if own ~= LocalPlayer():GetViewEntity() then
+        --own:SetNoDraw(true)
+        if isfunction(self.CustomOwnerRenderOverride) and self.CustomOwnerRenderOverride == own.RenderOverride then return end
         
+        local old = own.RenderOverride
+
+        self.CustomOwnerRenderOverride = function(own, fl, ...)
+            if not IsValid(self) then
+                own.RenderOverride = old
+                return
+            end
+        end
+        own.RenderOverride = self.CustomOwnerRenderOverride
+    end
+end
+
+function ENT:CustomRagRenderOverride(fl)
+    --if shouldDrawVM then return end
+
+    local ctrl = Savee_AdvRagKnockdown_GetController(self)
+    local own = ctrl:GetOwner()
+    if not IsValid(ctrl) or not IsValid(own) then return end
+    local ve = LocalPlayer():GetViewEntity()
+
+    own:SetupBones()
+    if ve ~= own and own:IsPlayer() then
+        hook.Run("PrePlayerDraw", own)
+    end
+
+    --own:SetupBones()
+    
+    local mtx = Matrix()
+    
+    local ragNoDrawBones = self.Savee_AdvRagKnockdown_NoDrawBones
+    if not ragNoDrawBones then
+        self:SetupBones()
+
+        ragNoDrawBones = {}
+
         local targetBIDs = {}
         for _, bName in ipairs(noDrawBones) do
-            targetBIDs[#targetBIDs + 1] = ent:LookupBone(bName)
+            targetBIDs[#targetBIDs + 1] = self:LookupBone(bName)
         end
-            
-        ent:SetupBones()
-        
-        local ragNoDrawBones = {}
-        for i = 0, ent:GetBoneCount() - 1 do
+
+        for i = 0, self:GetBoneCount() - 1 do
             for _, id in ipairs(targetBIDs) do
-                if not boneHasParent(ent, i, id) then continue end
+                if not boneHasParent(self, i, id) then continue end
                 ragNoDrawBones[i] = true
             end
         end
-
-        --ent:InvalidateBoneCache()
-        ent.Savee_AdvRagKnockdown_NoDrawBones = ragNoDrawBones
-
-        function ent:GetPlayerColor()
-            return own:GetPlayerColor()
-        end
+        --self.Savee_AdvRagKnockdown_PendingBoneMatrix = {}
+        self.Savee_AdvRagKnockdown_NoDrawBones = ragNoDrawBones
+        return
     end
 
-    local ragNoDrawBones = ent.Savee_AdvRagKnockdown_NoDrawBones
+    local stored = {}
 
-    ent:SetupBones()
-    rag:SetupBones()
-    local mtx = Matrix()
-    for i = 0, ent:GetBoneCount() - 1 do
-        if rag:GetBoneName(i) == "__INVALIDBONE__" then continue end
-        --print(rag:GetBoneName(i))
-        rag:CopyBoneMatrix(i, mtx)
+    local nb = self:GetBoneCount()
 
-        if ragNoDrawBones[i] then
+    for i = 0, nb - 1 do
+        if self:GetBoneName(i) == "__INVALIDBONE__" then continue end
+        stored[i] = self:GetBoneMatrix(i)
+        own:CopyBoneMatrix(i, mtx)
+
+        if ragNoDrawBones[i] and ve == own and shouldDrawVM then
             mtx:Scale(Vector(huge, huge, huge))
-            ent:SetBoneMatrix(i, mtx)
-            continue
+            --print(1)
         end
-        ent:SetBoneMatrix(i, mtx)
+        self:SetBoneMatrix(i, mtx)
     end
-    --print(ent)
-    ent:DrawModel(fl)
+
+    for i = 0, self:GetFlexNum() - 1 do
+        self:SetFlexWeight(i, own:GetFlexWeight(i))
+    end   
+
+    self:DrawModel(fl)
+
+    --[[if ve ~= own and own:IsPlayer() then
+        hook.Run("PostPlayerDraw", own)
+    end]]
+    --[[for i, mtx in pairs(stored) do
+        self:SetBoneMatrix(i, mtx)
+    end]]
+
+    
+    --self.Savee_AdvRagKnockdown_PendingBoneMatrix = {}
 end
 
 
@@ -3354,7 +3393,7 @@ function ENT:CalcView(ply, pos, ang, fov)
 
     --do return end
     local own = self:GetOwner()
-    if ply:GetViewEntity() ~= own then shouldDrawVM = false return end
+    if LocalPlayer():GetViewEntity() ~= own then shouldDrawVM = false return end
 
     --[[if not IsValid(self.CSEnt) then
         self.CSEnt = ClientsideModel("models/hunter/plates/plate.mdl")
@@ -3464,7 +3503,7 @@ function ENT:CalcView(ply, pos, ang, fov)
 
     self.EyeAng = ang
     self.EyeFOV = fov
-    self.LastEyeAng = LerpAngle(isSP and 1 or FrameTime() * 25, self.LastEyeAng or ang, ang)
+    self.LastEyeAng = LerpAngle(math.min(1, isSP and 1 or FrameTime() * 25), self.LastEyeAng or ang, ang)
 
     shouldDrawVM = not noArm and self:GetAimingWeapon()
     --ply:SetViewPunchAngles(Angle())

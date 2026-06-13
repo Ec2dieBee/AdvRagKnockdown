@@ -115,7 +115,7 @@ local function entTypeCheck(ent)
     return (ent:IsPlayer() and cv_kd_enabled_ply:GetBool()) or (ent:IsNPC() and cv_kd_enabled_npc:GetBool())
 end
 local function getController(ent)
-    if not cv_kd_enabled:GetBool() then return end
+    if not cv_kd_enabled:GetBool() or not IsValid(ent) then return end
     local ctrl = CLIENT and ent:GetNW2Entity("Savee_AdvRagKnockdown_Controller") or ent.Savee_AdvRagKnockdown_Controller
     if not IsValid(ctrl) or not ctrl.GetRagdoll or not IsValid(ctrl:GetRagdoll()) then return end
     return ctrl
@@ -399,7 +399,9 @@ funchooks.Add("NPC.GetShootPos", "Savee_AdvRagKnockdown_Sync", function(ply, ...
 
 end)
 
-local lastSysTime = -1
+local INE = math.IsNearlyEqual
+
+local lastSysTime_EyePos = -1
 funchooks.Add("Entity.EyePos", "Savee_AdvRagKnockdown_Sync", function(ply, raw, ...)
 
     --do return __undetoured(ply, ...) end
@@ -411,11 +413,11 @@ funchooks.Add("Entity.EyePos", "Savee_AdvRagKnockdown_Sync", function(ply, raw, 
     if not IsValid(ctrl) then return __undetoured(ply, raw, ...) end
     local sysTime = SysTime()
     
-    if lastSysTime >= sysTime and ctrl.VarCaches["EyePos"] then 
+    if lastSysTime_EyePos >= sysTime and ctrl.VarCaches["EyePos"] then 
         --print("有点拦截了") 
         return ctrl.VarCaches["EyePos"] 
     end
-    lastSysTime = sysTime + FrameTime() * 0.1
+    lastSysTime_EyePos = sysTime + tickInterval
 
     local rag = ctrl:GetRagdoll()
 
@@ -462,6 +464,10 @@ funchooks.Add("Entity.EyePos", "Savee_AdvRagKnockdown_Sync", function(ply, raw, 
    
 
 end)
+
+local lastSysTime_EyeAngles = -1
+
+
 funchooks.Add("Entity.EyeAngles", "Savee_AdvRagKnockdown_Sync", function(ply, raw, ...)
 
     --do return __undetoured(ply, ...) end
@@ -470,17 +476,45 @@ funchooks.Add("Entity.EyeAngles", "Savee_AdvRagKnockdown_Sync", function(ply, ra
     if raw or not entTypeCheck(ply) then return __undetoured(ply, raw, ...) end
 
     local ctrl = getController(ply)
+    local sysTime = SysTime()
 
     -- 神秘多人游戏bug
     if not IsValid(ctrl) or not ctrl.GetAimEyeAngles then return __undetoured(ply, raw, ...) end
+
+    --print(sysTime - lastSysTime_EyeAngles)
+    if lastSysTime_EyeAngles >= sysTime and ctrl.VarCaches["EyeAng"] then 
+        --print("DoReturnend")
+        return ctrl.VarCaches["EyeAng"] 
+    end
+    lastSysTime_EyeAngles = sysTime + FrameTime() * 0.01
 
     local ea = ctrl:GetAimEyeAngles()
     ea.z = 0
     ea:Normalize()
 
-    return SERVER and ea or LerpAngle(FrameTime(), ctrl.LastEyeAng or ea, ea)
+    local final = SERVER and ea or LerpAngle(FrameTime(), ctrl.LastEyeAng or ea, ea)
+    ctrl.VarCaches["EyeAng"] = final
+
+    return final
    
 
+end)
+funchooks.Add("Player.SetEyeAngles", "Savee_AdvRagKnockdown_Sync", function(ply, ang, raw, ...)
+
+    --do return __undetoured(ply, ...) end
+    --error(1)
+    --if SERVER then print(1) end
+    if raw or not entTypeCheck(ply) then return __undetoured(ply, ang, raw, ...) end
+
+    local ctrl = getController(ply)
+    if not IsValid(ctrl) then return __undetoured(ply, ang, raw, ...) end
+    ang.r = ctrl:GetAimEyeAngles().r
+    --print(1)
+    ctrl:SetAimEyeAngles(ang)
+    ctrl.VarCaches["EyeAng"] = ang
+
+    return __undetoured(ply, ang, raw, ...)
+   
 end)
 
 funchooks.Add("Entity.GetVelocity", "Savee_AdvRagKnockdown_Sync", function(ply, ...)
@@ -602,7 +636,13 @@ funchooks.Add("Player.GetAimVector", "Savee_AdvRagKnockdown_Sync", function(ply,
         mask = MASK_SHOT,
     })]]
 
-    local av = raw and __raw(ply, ...) or (CLIENT and (ctrl.LastEyeAng and ctrl.LastEyeAng:Forward()) or ctrl:GetAimEyeAngles():Forward()) --(tr.HitPos - eyepos):GetNormalized()
+    local finalAV = CLIENT and ctrl.LastEyeAng or ctrl:GetAimEyeAngles()
+    --finalAV.r = 0
+    --finalAV:Normalize()
+    finalAV = finalAV:Forward()
+
+
+    local av = raw and __raw(ply, ...) or finalAV --(tr.HitPos - eyepos):GetNormalized()
     --print(rDelta)
 
 
@@ -831,11 +871,12 @@ hook.Add("EntityFireBullets", "Savee_AdvRagKnockdown_HitScanMod", function(ent, 
     local rHD = ctrl:GetRArmDelta()
     --print(rHD)
 
-    local wep = bullet.Inflictor
+    local wep = bullet.Inflictor or bullet.Attacker
 
-    --print(bullet.Src, eyePos, shootPos)
+    --print(rHD, bullet.Src, eyePos, shootPos)
     if (IsValid(wep) and not wep:IsScripted() or bullet.Src == shootPos) and rHD <= 0.15 then
         bullet.Src = eyePos
+        --print(1)
     elseif rHD > 0.15 and bullet.Src == eyePos then
         bullet.Src = shootPos
     end
@@ -852,8 +893,7 @@ hook.Add("EntityFireBullets", "Savee_AdvRagKnockdown_HitScanMod", function(ent, 
         mask = MASK_SHOT,
     })]]
     --local actualav = (tr.HitPos - shootPos):GetNormalized()
-
-    local av = ent:GetAimVector()
+    local av = ent:GetAimVector(true)
     -- 神秘Bug修复
     local bDir = (isSP or SERVER) and bullet.Dir or av
 
@@ -869,8 +909,8 @@ hook.Add("EntityFireBullets", "Savee_AdvRagKnockdown_HitScanMod", function(ent, 
     local _, dDir = WorldToLocal(vector_origin, bDir:Angle(), vector_origin, av:Angle())
 
     --print(dDir)
-    bDir = ctrl:GetAimEyeAngles():Forward()
-    bDir:Rotate(dDir)
+    --bDir = ctrl:GetAimEyeAngles():Forward()
+    --bDir:Rotate(dDir)
 
     local hAngFwd = handang:Forward()
     hAngFwd:Rotate(dDir)
@@ -1048,9 +1088,9 @@ if SERVER then
 
         if not cv_kd_enabled:GetBool() then return end
 
-        --print("正在击倒: ", ply, vec, bone)
-
+        
         if not entTypeCheck(ply) then return end
+        --print("正在击倒: ", ply, vec, bone)
 
         local oldCtrl = getController(ply)
         if IsValid(oldCtrl) then
@@ -1330,8 +1370,8 @@ if SERVER then
         local dmg = di:GetDamage()
         local hp = ent:Health()
         if hp <= 0 then return end
-        --print(ent:Health())
         if dmg <= 10 and di:GetDamageForce():Length() < 2500 then return end
+        --print(ent:Health())
         --if dmg >= ent:Health() or ent:Health() <= 0 then return end
         --print("我要被踹翻了Help: ", ent, di)
 
@@ -1595,10 +1635,18 @@ if SERVER then
     
     end)
 
+    hook.Add("OnNPCKilled", "!!Savee_AdvRagKnockdown_SetNPCPos", function(npc)
+        local ctrl = getController(npc)
+        if not IsValid(ctrl) then return end
+
+        npc:SetPos(ctrl:GetRagdoll():GetPos(), true)
+
+    end)
+
     hook.Add("CreateEntityRagdoll", "Savee_AdvRagKnockdown_InheritRagVel", function(ent, dRag, fucked)
         --print(dRag)
         ---@type Entity
-        local ctrl = ent.Savee_AdvRagKnockdown_Controller
+        local ctrl = getController(ent)
         if fucked or not IsValid(ctrl) or dRag:IsMarkedForDeletion() then return end
 
         --do dRag:Remove() return end
@@ -1619,8 +1667,6 @@ if SERVER then
             pObj:Wake()
             pObj:SetVelocity(rag:GetPhysicsObjectNum(i):GetVelocity())
         end
-
-        ctrl:RemoveSelf()
 
     end)
     hook.Add("CanPlayerEnterVehicle", "Savee_AdvRagKnockdown_NoVehicle", function(ply)
@@ -1886,7 +1932,7 @@ else
     end
 
     hook.Add("CalcView", "Savee_AdvRagKnockdown_CTRLHook", function(ply, pos, ang, fov)
-        local self = getController(LocalPlayer():GetViewEntity())
+        local self = getController(ply)
         if returnCheck(self) then return end
         return self:CalcView(ply, pos, ang, fov)
     
@@ -1991,6 +2037,27 @@ else
         end
     
     end)
+
+    --[[funchooks.Add("Entity.SetBoneMatrix", "Savee_AdvRagKnockdown_TPIKSupport", function(ply, i, mtx, ...)
+        if ply:IsRagdoll() then return __undetoured(ply, i, mtx, ...) end
+        local ctrl = getController(ply)
+        --print(ply)
+        if IsValid(ctrl) then
+            local rag = ctrl:GetRagdoll()
+            rag:SetBoneMatrix(i, mtx)
+        end
+
+        return __undetoured(ply, i, mtx, ...)
+    end)
+    funchooks.Add("Entity.SetBonePosition", "Savee_AdvRagKnockdown_TPIKSupport", function(ply, i, pos, ang, ...)
+        if ply:IsRagdoll() then return __undetoured(ply, i, pos, ang, ...) end
+        local ctrl = getController(ply)
+        if IsValid(ctrl) then
+            ctrl:GetRagdoll():SetBonePosition(i, pos, ang)
+        end
+
+        return __undetoured(ply, i, pos, ang, ...)
+    end)]]
 
     -- 兼容
 
