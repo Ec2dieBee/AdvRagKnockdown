@@ -916,8 +916,8 @@ function ENT:Initialize()
     rag:SetModel(own:GetModel())
     rag:SetPos(self:GetPos())
     rag:SetAngles(own:GetAngles())
+    --rag:DrawShadow(false)
     --rag:SetNoDraw(true)
-    --rag:AddEffects(EF_BONEMERGE)
     --rag:SetParent(own)
 
     cloneAtoB(own, rag)
@@ -3363,14 +3363,16 @@ function ENT:CustomRagRenderOverride(fl)
         self:SetFlexWeight(i, own:GetFlexWeight(i))
     end   
 
-    self:DrawModel(fl)
 
-    --[[if ve ~= own and own:IsPlayer() then
+    self:DrawModel(fl)
+    self:CreateShadow()
+
+    if ve ~= own and own:IsPlayer() then
         hook.Run("PostPlayerDraw", own)
-    end]]
-    --[[for i, mtx in pairs(stored) do
+    end
+    for i, mtx in pairs(stored) do
         self:SetBoneMatrix(i, mtx)
-    end]]
+    end
 
     
     --self.Savee_AdvRagKnockdown_PendingBoneMatrix = {}

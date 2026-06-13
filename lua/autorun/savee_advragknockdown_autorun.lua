@@ -310,6 +310,8 @@ local setItOnMe = {
     "Model",
     "RenderMode",
     "RenderFX",
+    "Bodygroup",
+    "BodyGroups",
 }
 
 for _, str in ipairs(setItOnMe) do
