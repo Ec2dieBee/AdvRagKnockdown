@@ -843,8 +843,8 @@ function ENT:RemoveSelf(killOwner)
             end
         end
     end
-    self:Remove()
-    --SafeRemoveEntity(self)
+    --self:Remove()
+    SafeRemoveEntity(self)
 end
 
 function ENT:Initialize()

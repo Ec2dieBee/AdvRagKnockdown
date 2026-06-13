@@ -1705,6 +1705,8 @@ if SERVER then
             pObj:SetVelocity(rag:GetPhysicsObjectNum(i):GetVelocity())
         end
 
+        ctrl:RemoveSelf()
+
     end)
     hook.Add("CanPlayerEnterVehicle", "Savee_AdvRagKnockdown_NoVehicle", function(ply)
         --print(dRag)
