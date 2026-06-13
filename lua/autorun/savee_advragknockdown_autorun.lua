@@ -23,8 +23,6 @@ local cv_kd_enabled = CreateConVar(cvPrefix .. "enabled", 1, cvTags, "字面意�
 local cv_kd_enabled_ply = CreateConVar(cvPrefix .. "enableply", 1, cvTags, "字面意思, 除了typo", 0, 1)
 local cv_kd_enabled_npc = CreateConVar(cvPrefix .. "enablenpc", 1, cvTags, "字面意思, 除了typo", 0, 1)
 local cv_kd_damagecalc_usetakedamage = CreateConVar(cvPrefix .. "damagecalc_usetakedamage", 0, cvTags, "使用TakeDamageInfo并更进一步修改BulletTable, 可能会出现没受到伤害且力度不够时仍被击倒的情况", 0, 1)
-local cv_kd_damagecalc_usetakedamage_bulletnodelay = CreateConVar(cvPrefix .. "damagecalc_usetakedamage_dontdelaybulletcalc", 0, cvTags, "取消延迟子弹的击倒判定, **十分不建议在ZCity里启用这个**", 0, 1)
-local cv_kd_damagecalc_usetakedamage_strictbullet = CreateConVar(cvPrefix .. "damagecalc_usetakedamage_strictbullet", 0, cvTags, "启用更加\"严苛\"的判定方式以防止无限穿透四肢 0-正常 1-严苛 2-很几把严苛 **建议在ZCity里设成2**", 0, 2)
 
 CreateConVar(cvPrefix .. "npc_usehook_createentityragdoll", 0, cvTags, "在NPC被击倒时调用CreateEntityRagdoll", 0, 1)
 CreateConVar(cvPrefix .. "playdead_npc_usehook_createentityragdoll", 1, cvTags, "在NPC假死时调用CreateEntityRagdoll", 0, 1)
@@ -687,38 +685,6 @@ funchooks.Add("Player.GetAimVector", "Savee_AdvRagKnockdown_Sync", function(ply,
    
 
 end)
-funchooks.Add("NPC.GetAimVector", "Savee_AdvRagKnockdown_Sync", function(ply, raw, ...)
-
-    --do return __undetoured(ply, ...) end
-
-    local ctrl = getController(ply)
-    if not IsValid(ctrl) then return __undetoured(ply, raw, ...) end
-    local rag = ctrl:GetRagdoll()
-    local bone = rag:LookupBone("ValveBiped.Bip01_R_Hand")
-
-    local eyeatt = rag:LookupAttachment("eyes")
-    if not bone or eyeatt == 0 then return __undetoured(ply, raw, ...) end
-
-    local eyepos = rag:GetAttachment(eyeatt).Pos
-
-    local handpos, handang = rag:GetBonePosition(bone)
-    handpos, handang = LocalToWorld(handPosDelta, Angle(), handpos, handang)
-
-    --[[local tr = util.TraceLine({
-        start = eyepos,
-        endpos = eyepos + ctrl:GetAimEyeAngles():Forward() * 65536,
-        filter = {ply, rag},
-        mask = MASK_SHOT,
-    })]]
-
-    local av = raw and __raw(ply, ...) or ctrl:GetAimEyeAngles():Forward() --(tr.HitPos - eyepos):GetNormalized()
-    --print(rDelta)
-
-
-    return LerpVector(CLIENT and ctrl.SmoothedRArmDelta or math.Clamp((ctrl:GetRArmDelta() - 0.03) * 10, 0, 1), av, handang:Forward())
-   
-
-end)
 
 
 funchooks.Add("Player.IsPlayingTaunt", "Savee_AdvRagKnockdown_ARC9TPIK", function(ply, ...)
@@ -779,9 +745,6 @@ end
 hook.Add("EntityFireBullets", "Savee_AdvRagKnockdown_HitScanMod", function(ent, bullet)
     --local wep = ent
     if ent:IsWeapon() then ent = ent:GetOwner() end
-    if cv_kd_damagecalc_usetakedamage_strictbullet:GetBool() and bullet.Savee_AdvRagKnockdown_Suspended then
-        return false
-    end
     
     if SERVER then
         local cb = bullet.Callback
@@ -797,11 +760,6 @@ hook.Add("EntityFireBullets", "Savee_AdvRagKnockdown_HitScanMod", function(ent, 
 
             --bullet.Fucked = true
             --print(btr.HitPos)
-            if cv_kd_damagecalc_usetakedamage_strictbullet:GetBool() and bullet.Savee_AdvRagKnockdown_SuspendIfHitAgain == rag then
-                --print(2)
-                bullet.Savee_AdvRagKnockdown_Suspended = true
-                return {damage = false, effects = false}
-            end
 
             local ctrl = getController(rag)
             --print(rag)
@@ -860,27 +818,10 @@ hook.Add("EntityFireBullets", "Savee_AdvRagKnockdown_HitScanMod", function(ent, 
 
             --local ent = btr.Entity
             if SERVER and cv_kd_damagecalc_usetakedamage:GetBool() and IsValid(rag) then
-                if cv_kd_damagecalc_usetakedamage_bulletnodelay:GetBool() then
-                    if rag:IsRagdoll() then
-                        Savee_AdvRagKnockdown_DoRagDamage(rag, di, di:GetDamage() > 0)
-                    else
-                        Savee_AdvRagKnockdown_DMGKnockdown(rag, di, di:GetDamage() > 0)
-                    end
+                if rag:IsRagdoll() then
+                    Savee_AdvRagKnockdown_DoRagDamage(rag, di, di:GetDamage() > 0)
                 else
-                    timer.Simple(tickInterval, function()
-                        if not di then return end
-                        if rag:IsRagdoll() then
-                            Savee_AdvRagKnockdown_DoRagDamage(rag, di, di:GetDamage() > 0)
-                        else
-                            Savee_AdvRagKnockdown_DMGKnockdown(rag, di, di:GetDamage() > 0)
-                        end
-                    end)
-                end
-                if cv_kd_damagecalc_usetakedamage_strictbullet:GetBool() and IsValid(ctrl) then
-                    --print(1)
-                    bullet.IgnoreEntity = ctrl:GetOwner()
-                    bullet.Savee_AdvRagKnockdown_SuspendIfHitAgain = rag
-                    bullet.Savee_AdvRagKnockdown_Suspended = cv_kd_damagecalc_usetakedamage_strictbullet:GetInt() == 2
+                    Savee_AdvRagKnockdown_DMGKnockdown(rag, di, di:GetDamage() > 0)
                 end
             end
 
@@ -1643,7 +1584,36 @@ if SERVER then
         return __undetoured(ent, dmg, atk, inf, raw, ...)
     
     end)
+    
+    funchooks.Add("NPC.GetAimVector", "Savee_AdvRagKnockdown_Sync", function(ply, raw, ...)
 
+        local ctrl = getController(ply)
+        if not IsValid(ctrl) then return __undetoured(ply, raw, ...) end
+        local rag = ctrl:GetRagdoll()
+        local bone = rag:LookupBone("ValveBiped.Bip01_R_Hand")
+
+        local eyeatt = rag:LookupAttachment("eyes")
+        if not bone or eyeatt == 0 then return __undetoured(ply, raw, ...) end
+
+        local eyepos = rag:GetAttachment(eyeatt).Pos
+
+        local handpos, handang = rag:GetBonePosition(bone)
+        handpos, handang = LocalToWorld(handPosDelta, Angle(), handpos, handang)
+
+        --[[local tr = util.TraceLine({
+            start = eyepos,
+            endpos = eyepos + ctrl:GetAimEyeAngles():Forward() * 65536,
+            filter = {ply, rag},
+            mask = MASK_SHOT,
+        })]]
+
+        local av = raw and __raw(ply, ...) or ctrl:GetAimEyeAngles():Forward() --(tr.HitPos - eyepos):GetNormalized()
+        --print(rDelta)
+
+
+        return LerpVector(math.Clamp((ctrl:GetRArmDelta() - 0.03) * 10, 0, 1), av, handang:Forward())
+    
+    end)
     --local ent = ents.Create("npc_combine_s")
     --ent:Spawn()
     --doKnockdown(ent)
