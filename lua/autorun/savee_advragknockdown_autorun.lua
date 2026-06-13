@@ -306,6 +306,42 @@ for _, str in ipairs(trs) do
 
 end
 
+local setItOnMe = {
+    "Material",
+    "Color",
+    "Model",
+    "RenderMode",
+    "RenderFX",
+}
+
+for _, str in ipairs(setItOnMe) do
+
+    -- Clone Drone In the
+    local dangerzone
+    local function override(ent, ...)
+        local ctrl = getController(ent)
+        if dangerzone or not IsValid(ctrl) then return __undetoured(ent, ...) end
+        
+        dangerzone = true
+
+        if ent:IsRagdoll() and ent.Initialized then
+            local own = ctrl:GetOwner()
+            own["Set" .. str](own, ...)
+            return
+        end
+        local rag = ctrl:GetRagdoll()
+        
+        rag["Set" .. str](rag, ...)
+
+        dangerzone = false
+
+        return __undetoured(ent, ...)
+    end
+
+    funchooks.Add("Entity.Set" .. str, "Savee_AdvRagKnockdown_Syncing", override)
+
+end
+
 --funchooks.Add("util.TraceLine", "Savee_AdvRagKnockdown_HitScanMod", trOverride)
 ----funchooks.Add("util.TraceLine", "Savee_AdvRagKnockdown_HitScanMod2", trOverride)
 --funchooks.Add("util.TraceHull", "Savee_AdvRagKnockdown_HitScanMod", trOverride)
