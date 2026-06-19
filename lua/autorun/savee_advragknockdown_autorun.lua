@@ -115,7 +115,9 @@ end
 local function getController(ent)
     if not cv_kd_enabled:GetBool() or not IsValid(ent) then return end
     local ctrl = CLIENT and ent:GetNW2Entity("Savee_AdvRagKnockdown_Controller") or ent.Savee_AdvRagKnockdown_Controller
-    if not IsValid(ctrl) or not ctrl.GetRagdoll or not IsValid(ctrl:GetRagdoll()) then return end
+    if not IsValid(ctrl) or not ctrl.GetRagdoll then return end
+    local rag = ctrl:GetRagdoll()
+    if not IsValid(rag) or rag:IsMarkedForDeletion() then return end
     return ctrl
 end
 
@@ -519,18 +521,18 @@ funchooks.Add("Entity.EyeAngles", "Savee_AdvRagKnockdown_Sync", function(ply, ra
     if not IsValid(ctrl) or not ctrl.GetAimEyeAngles then return __undetoured(ply, raw, ...) end
 
     --print(sysTime - lastSysTime_EyeAngles)
-    if lastSysTime_EyeAngles >= sysTime and ctrl.VarCaches["EyeAng"] then 
+    --[[if lastSysTime_EyeAngles >= sysTime and ctrl.VarCaches["EyeAng"] then 
         --print("DoReturnend")
         return ctrl.VarCaches["EyeAng"] 
-    end
-    lastSysTime_EyeAngles = sysTime + FrameTime() * 0.01
+    end]]
+    --lastSysTime_EyeAngles = sysTime + FrameTime() * 0.01
 
     local ea = ctrl:GetAimEyeAngles()
     ea.z = 0
     ea:Normalize()
 
     local final = SERVER and ea or LerpAngle(FrameTime(), ctrl.LastEyeAng or ea, ea)
-    ctrl.VarCaches["EyeAng"] = final
+    --ctrl.VarCaches["EyeAng"] = final
 
     return final
    
@@ -893,6 +895,7 @@ hook.Add("EntityFireBullets", "Savee_AdvRagKnockdown_HitScanMod", function(ent, 
     --bDir:Rotate(dDir)
 
     local hAngFwd = handang:Forward()
+    --hAngFwd:Rotate(Angle(0, 0, 0))
     hAngFwd:Rotate(dDir)
     --bDir = LocalToWorld(dDir, angle_zero, ctrl:GetAimEyeAngles():Forward(), angle_zero)
     --dDir = LocalToWorld(dDir, angle_zero, handang:Forward(), handang)
@@ -1223,7 +1226,7 @@ if SERVER then
         --if count >= 100 then error("FUCK") end
 
         local own = ctrl:GetOwner()
-        if not IsValid(own) or rag == own or own:Health() <= 0 then return end
+        if not IsValid(own) or rag == own then return end
         --if own:IsFlagSet(FL_KILLME) or own:IsFlagSet(FL_TRANSRAGDOLL) then return end
 
         local ct = CurTime()
@@ -1576,7 +1579,7 @@ if SERVER then
         di:SetDamage(dmg)
         di:SetDamageType(DMG_GENERIC)
         if IsValid(atk) then di:SetAttacker(atk) end
-        if IsValid(inf) then di:SetInflictor(inf) end
+        if isentity(inf) and IsValid(inf) then di:SetInflictor(inf) end
         if ent:IsRagdoll() then
             calcRagDamage(ent, di, dmg > 0)
         else
@@ -1646,7 +1649,7 @@ if SERVER then
 
     hook.Add("OnNPCKilled", "!!Savee_AdvRagKnockdown_SetNPCPos", function(npc)
         local ctrl = getController(npc)
-        if not IsValid(ctrl) then return end
+        if not IsValid(ctrl) or not ctrl.Initialized then return end
 
         npc:SetPos(ctrl:GetRagdoll():GetPos(), true)
 
@@ -1669,13 +1672,28 @@ if SERVER then
         ---@type Entity
         local rag = ctrl:GetRagdoll()
 
+        local dataList = {}
+
         --print(1)
         for i = 0, rag:GetPhysicsObjectCount() - 1 do
             local pObj = dRag:GetPhysicsObjectNum(i)
-            if not IsValid(pObj) then continue end
+            local pObjRag = rag:GetPhysicsObjectNum(i)
+            if not IsValid(pObj) or not IsValid(pObjRag) then continue end
+            dataList[i] = {pObjRag:GetPos(), pObjRag:GetAngles()}
             pObj:Wake()
-            pObj:SetVelocity(rag:GetPhysicsObjectNum(i):GetVelocity())
+            pObj:SetVelocity(pObjRag:GetVelocity())
         end
+
+        timer.Simple(tickInterval, function()
+            if not IsValid(dRag) then return end
+
+            for i, data in pairs(dataList) do
+                local pObj = dRag:GetPhysicsObjectNum(i)
+                if not IsValid(pObj) then continue end
+                pObj:SetPos(data[1])
+                pObj:SetAngles(data[2])
+            end
+        end)
 
         ctrl:RemoveSelf()
 

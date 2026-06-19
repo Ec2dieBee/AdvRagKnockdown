@@ -1044,6 +1044,9 @@ function ENT:Initialize()
 
     rag:AddCallback("PhysicsCollide", function(rag, data)
     
+        local ct = CurTime()
+        if ct <= self.PreventPhysAttackTill then return end
+
         -- 我不认为你高速创到一个灰尘会导致你昏厥, 我觉得该昏的是灰尘
         local pObj = data.PhysObject
         
@@ -1061,7 +1064,6 @@ function ENT:Initialize()
         --print(spd)
         if spd == 0 or data.HitEntity == rag then return end
 
-        local ct = CurTime()
         local ent = data.HitEntity
 
         local dmg = spd / 10 - pObj:GetMass()
@@ -1070,13 +1072,13 @@ function ENT:Initialize()
         --print(data.PhysObject)
         --PrintTable(data.PhysObject:GetTable())
 
-        local bone = nearestBone(rag, data.HitPos, true) --pObjtoBones[data.PhysObject] or 0
+        --[[local bone = nearestBone(rag, data.HitPos, true) --pObjtoBones[data.PhysObject] or 0
         local hitGroup = rag.Savee_AdvRagKnockdown_HitGroups[bone]
         local hgMul = hitGroupMuls[hitGroup or 0]
 
         --print(rag:GetBoneName(bone), hitGroup)
 
-        --[[local stDmg = spd / 100 * (hgMul and hgMul[1] or 1)
+        local stDmg = spd / 100 * (hgMul and hgMul[1] or 1)
         local csDmg = spd / 20 * (hgMul and hgMul[2] or 1)
 
         local stamina = self:GetStamina()
@@ -1093,7 +1095,7 @@ function ENT:Initialize()
 
         local di = DamageInfo()
         self.DI_MarkedAsTaken[di] = true
-        di:SetDamage(dmg * (hgMul and hgMul[1] or 1) * (official and 1 or 0.2))
+        di:SetDamage(dmg * (official and 1 or 0.2))
         di:SetDamageType(DMG_CRUSH)
 
         local pAtk = ent:GetPhysicsAttacker()
@@ -1102,6 +1104,7 @@ function ENT:Initialize()
 
         --print(data.HitEntity)
         own:TakeDamageInfo(di, true)
+        self.PreventPhysAttackTill = ct + tickInterval
     
     end)
 
@@ -1812,6 +1815,7 @@ function ENT:Think()
     --own:SetPos(vector_origin)
     --own:SetLocalPos(Vector(18, 0, -3))
     --local hitpos = own:GetEyeTrace().HitPos
+    self.Constraints = {}
     self:NextThink(ct + 0.1)
     return true
 
@@ -2776,6 +2780,7 @@ function ENT:Tick()
             pos = pos - Vector(0, 0, 50)
         end
         if lhand then
+            self:SetLArmDelta(math.Approach(self:GetLArmDelta(), 1, 0.2))
             local _, ang = LocalToWorld(vector_origin, Angle(0, 0, 90), vector_origin, eyeang)
             shadowCtrls["ValveBiped.Bip01_L_Hand"] = {
                 --secondstoarrive = 0.01,
@@ -2793,8 +2798,7 @@ function ENT:Tick()
             shadowCtrls["ValveBiped.Bip01_L_Forearm"] = nil
         end
         if rhand then
-            self:SetLArmDelta(math.Approach(self:GetLArmDelta(), 1, 0.2))
-            local _, ang = LocalToWorld(vector_origin, Angle(0, 0, (noArm or isMeleeHT) and 90 or 180), vector_origin, aea)
+            local _, ang = LocalToWorld(vector_origin, Angle(20, 20, (noArm or isMeleeHT) and 90 or 180), vector_origin, aea)
             shadowCtrls["ValveBiped.Bip01_R_Hand"] = {
                 --secondstoarrive = 0.01,
                 pos = pos + right,
@@ -3313,8 +3317,8 @@ function ENT:CustomRagRenderOverride(fl)
     local ve = LocalPlayer():GetViewEntity()
 
     own:SetupBones()
-    if ve ~= own and own:IsPlayer() then
-        hook.Run("PrePlayerDraw", own)
+    if own:IsPlayer() then
+        hook.Run("PrePlayerDraw", own, fl)
     end
 
     --own:SetupBones()
@@ -3348,15 +3352,16 @@ function ENT:CustomRagRenderOverride(fl)
     local nb = self:GetBoneCount()
 
     for i = 0, nb - 1 do
-        if self:GetBoneName(i) == "__INVALIDBONE__" then continue end
+        local bName = self:GetBoneName(i)
+        if bName == "__INVALIDBONE__" then continue end
         stored[i] = self:GetBoneMatrix(i)
         own:CopyBoneMatrix(i, mtx)
-
-        if ragNoDrawBones[i] and ve == own and shouldDrawVM then
+        
+        if ragNoDrawBones[i] and ve == own and (shouldDrawVM or bName == "ValveBiped.Bip01_Head1") then
             mtx:Scale(Vector(huge, huge, huge))
-            --print(1)
         end
         self:SetBoneMatrix(i, mtx)
+        own:SetBoneMatrix(i, mtx)
     end
 
     for i = 0, self:GetFlexNum() - 1 do
@@ -3367,8 +3372,8 @@ function ENT:CustomRagRenderOverride(fl)
     self:DrawModel(fl)
     self:CreateShadow()
 
-    if ve ~= own and own:IsPlayer() then
-        hook.Run("PostPlayerDraw", own)
+    if own:IsPlayer() then
+        hook.Run("PostPlayerDraw", own, fl)
     end
     for i, mtx in pairs(stored) do
         self:SetBoneMatrix(i, mtx)
