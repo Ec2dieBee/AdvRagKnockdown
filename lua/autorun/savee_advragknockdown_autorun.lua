@@ -310,12 +310,18 @@ end
 
 local setItOnMe = {
     "Material",
+    "Skin",
     "Color",
     "Model",
     "RenderMode",
     "RenderFX",
     "Bodygroup",
     "BodyGroups",
+    "Velocity",
+    "AbsVelocity",
+    "LocalVelocity",
+    "FlexScale",
+    "FlexWeight",
 }
 
 for _, str in ipairs(setItOnMe) do
@@ -1349,7 +1355,7 @@ if SERVER then
         --if ent:IsPlayer() and ent:Health() > 35 then return end
         --if ent:IsPlayer() then return end
 
-        if not entTypeCheck(ent) or IsValid(getController(ent)) then return end
+        if not entTypeCheck(ent) then return end
 
         
         local dmg = di:GetDamage()
@@ -1631,6 +1637,21 @@ if SERVER then
             ent.Savee_AdvRagKnockdown_CanBeKnockdowned = true
         end)
     end)]]
+
+    hook.Add("PlayerUse", "Savee_AdvRagKnockdown_HelpFriendly", function(ply, ent)
+        -- 无法在被击倒时扶起队友.jpg
+        if IsValid(getController(ply)) then return end
+
+        local ctrl = getController(ent)
+        if not IsValid(ctrl) then return end 
+        ent = ctrl:GetOwner()
+
+        if not ent:IsNPC() or ent:Disposition(ply) < D_LI then return end
+        
+        ctrl:TryGetUp()
+        
+        return false
+    end)
     
     hook.Add("PostCleanupMap", "Savee_AdvRagKnockdown_ResetRagdoll", function()
     

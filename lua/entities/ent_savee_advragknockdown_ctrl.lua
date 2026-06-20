@@ -347,10 +347,13 @@ end
 -- 我去 失落科技!!!
 ---@param a Entity
 ---@param b Entity
-local function cloneAtoB(b, a)
-	a:SetPos(b:GetPos())
-	a:SetAngles(b:GetAngles())
-	a:SetModel(b:GetModel())
+local function cloneAtoB(b, a, fucked)
+    if not fucked then
+	    a:SetPos(b:GetPos())
+	    a:SetAngles(b:GetAngles())
+	    a:SetModel(b:GetModel())
+    end
+    a:SetModelScale(b:GetModelScale())
 	a:SetMaterial(b:GetMaterial())
 	a:SetSkin(b:GetSkin())
     a:SetColor(b:GetColor())
@@ -621,7 +624,8 @@ end
 
 -- 甲级战犯, 崩溃主要导致者(对NPC 我猜)
 -- 导致我浪费好几个小时的罪魁祸首
-local function replaceRagconstraint(rag, bchild, bparent, minAng, maxAng, fric)
+-- 经验证, 可能是布娃娃移除的时机不对/未能消除所有约束导致
+local function replaceRagconstraint(rag, pObjs, bchild, bparent, minAng, maxAng, fric)
     
     if not IsValid(rag) or not bchild or not bparent then return end
     if not rag:LookupBone(bparent) or not rag:LookupBone(bchild) then return end
@@ -633,10 +637,11 @@ local function replaceRagconstraint(rag, bchild, bparent, minAng, maxAng, fric)
     
     -- 我甚至记得下来完整的前缀
     -- 每个正常模型都有的玩意, 没有就让它滚
-    local lArm = rag:TranslateBoneToPhysBone(rag:LookupBone(bparent))
-    local lHand = rag:TranslateBoneToPhysBone(rag:LookupBone(bchild))
-    local lArmP = rag:GetPhysicsObjectNum(lArm)
-    local lHandP = rag:GetPhysicsObjectNum(lHand)
+    local lArm = pObjs and pObjs[bparent].id or rag:TranslateBoneToPhysBone(rag:LookupBone(bparent))
+    local lHand = pObjs and pObjs[bchild].id or rag:TranslateBoneToPhysBone(rag:LookupBone(bchild))
+    local lArmP = pObjs and pObjs[bparent].pObj or rag:GetPhysicsObjectNum(rag:TranslateBoneToPhysBone(rag:LookupBone(bparent)))
+    local lHandP = pObjs and pObjs[bchild].pObj or rag:GetPhysicsObjectNum(rag:TranslateBoneToPhysBone(rag:LookupBone(bchild)))
+    --print(rag:GetBoneName(rag:LookupBone(bparent)), rag:GetBoneName(rag:LookupBone(bchild)), rag:GetBoneName(rag:TranslatePhysBoneToBone(lArm)))
     local oldHandPos, oldHandAng, oldArmPos, oldArmAng = lHandP:GetPos(), lHandP:GetAngles(), lArmP:GetPos(), lArmP:GetAngles()
 
     --lHandP:ClearGameFlag(FVPHYSICS_PART_OF_RAGDOLL)
@@ -649,8 +654,10 @@ local function replaceRagconstraint(rag, bchild, bparent, minAng, maxAng, fric)
     
     -- 我希望布娃娃的相对骨骼修改始终如一
     -- constraint.AdvBallsocket局部过头(即相对当前角度), 需要复原才行
-    local armPos, armAng = ent:GetBonePosition(ent:LookupBone(bparent))
-    local handPos, handAng = ent:GetBonePosition(ent:LookupBone(bchild))
+    local parentMtx, childMtx = ent:GetBoneMatrix(ent:LookupBone(bparent)), ent:GetBoneMatrix(ent:LookupBone(bchild))
+    if not parentMtx or not childMtx then SafeRemoveEntityDelayed(ent, tickInterval) return end
+    local armPos, armAng = parentMtx:GetTranslation(), parentMtx:GetAngles()
+    local handPos, handAng = childMtx:GetTranslation(), childMtx:GetAngles()
     
     SafeRemoveEntityDelayed(ent, tickInterval)
     
@@ -672,6 +679,7 @@ local function replaceRagconstraint(rag, bchild, bparent, minAng, maxAng, fric)
     --lHandP:Wake()
     --local const = constraint.AdvBallsocket(rag, rag, lArm, lHand, wtlLH, nil, 0, 0, minAng.p, minAng.y, minAng.r, maxAng.p, maxAng.y, maxAng.r, fric, fric, fric, 0, 1)
     local const = constraint.AdvBallsocket(rag, rag, lArm, lHand, wtlLH, nil, 0, 0, minAng.p, minAng.y, minAng.r, maxAng.p, maxAng.y, maxAng.r, fric, fric, fric, 0, 1)
+    --print(const)
     --local constEst = constraint.Elastic(rag, rag, lArm, lHand, wtlLH, vector_origin, 20000, 500, 0.1, "", 0, false, Color(0, 0, 0, 0))
     --local constRop = constraint.Rope(rag, rag, lArm, lHand, wtlLH, vector_origin, 1, 01, 0, 0, "", false, Color(0, 0, 0, 0))
     --const:SetSaveValue("m_bSimulatedEveryTick", true)
@@ -711,7 +719,7 @@ end
 
 -- SVOnly
 ---@param rag Entity
-local function modifyRagdoll(rag, replace)
+local function modifyRagdoll(rag, pObjs)
     
     --print("ICALL")
     
@@ -726,8 +734,8 @@ local function modifyRagdoll(rag, replace)
     
     -- dumbass_define_animandphys.qci
     --if replace then
-        replaceRagconstraint(rag, "ValveBiped.Bip01_L_Hand", "ValveBiped.Bip01_L_Forearm", -angMax, angMax, 0)
-        replaceRagconstraint(rag, "ValveBiped.Bip01_R_Hand", "ValveBiped.Bip01_R_Forearm", -angMax, angMax, 0)
+    replaceRagconstraint(rag, pObjs, "ValveBiped.Bip01_L_Hand", "ValveBiped.Bip01_L_Forearm", -angMax, angMax, 0)
+    replaceRagconstraint(rag, pObjs, "ValveBiped.Bip01_R_Hand", "ValveBiped.Bip01_R_Forearm", -angMax, angMax, 0)
     --end
 
 
@@ -917,6 +925,7 @@ function ENT:Initialize()
     rag:SetModel(own:GetModel())
     rag:SetPos(self:GetPos())
     rag:SetAngles(own:GetAngles())
+    --rag:SetSolid(SOLID_VPHYSICS)
     --rag:DrawShadow(false)
     --rag:SetNoDraw(true)
     --rag:SetParent(own)
@@ -951,9 +960,9 @@ function ENT:Initialize()
     --rag:AddEffects(EFL_DONTBLOCKLOS)
     --rag:AddFlags(FL_NOTARGET)
     --rag:RemoveFlags(FL_OBJECT)
-    rag:SetCollisionGroup(COLLISION_GROUP_INTERACTIVE_DEBRIS)
+    rag:SetCollisionGroup(own:IsPlayer() and COLLISION_GROUP_PLAYER or COLLISION_GROUP_DEBRIS_TRIGGER)
 
-    modifyRagdoll(rag, own:IsPlayer())
+    --modifyRagdoll(rag)
 
     rag:SetNW2Entity("Savee_AdvRagKnockdown_Controller", self)
 
@@ -1045,7 +1054,7 @@ function ENT:Initialize()
 
     rag:AddCallback("PhysicsCollide", function(rag, data)
     
-        if not IsValid(self) then return end
+        if not IsValid(self) or not IsValid(own) then return end
 
         local ct = CurTime()
         if ct <= self.PreventPhysAttackTill then return end
@@ -1062,7 +1071,7 @@ function ENT:Initialize()
 
         --print(spd * mul, mul)
 
-        spd = math.max(spd * mul - (official and 400 or 800) / math.max(1, mdlScale), 0)
+        spd = math.max(spd * mul - (official and 600 or 1600) / math.max(1, mdlScale), 0)
 
         --print(spd)
         if spd == 0 or data.HitEntity == rag then return end
@@ -1107,7 +1116,7 @@ function ENT:Initialize()
 
         --print(data.HitEntity)
         own:TakeDamageInfo(di, true)
-        self.PreventPhysAttackTill = ct + tickInterval
+        self.PreventPhysAttackTill = ct + tickInterval * 2
     
     end)
 
@@ -1144,15 +1153,19 @@ function ENT:Initialize()
     -- 在sa_03测试了, 击杀3-4个盾兵并未发生崩溃情况(老方法会崩溃, 参见autorun.lua)
     -- 我就一会点GmosLua的苦逼高中生, C艹这些玩意交给高人解决吧(奈莉看完也4了.jpg)
     timer.Simple(tickInterval, function() 
-    if not IsValid(self) then return end
+        if not IsValid(self) then return end
+        -- [ARC9] Modern Warfare 2019 飞刀支持
+        modifyRagdoll(rag, pObjs)
         own:SetMoveParent(rag)
         self.Initialized = true
     end)
     --end
     self.m_iOwnMoveType = own:GetMoveType()
     self.m_iOwnCollisionGroup = own:GetCollisionGroup()
+    self.m_iOwnSolid = own:GetSolid()
     own:SetCollisionGroup(COLLISION_GROUP_IN_VEHICLE)
     own:SetMoveType(MOVETYPE_NONE)
+    own:SetSolid(SOLID_NONE)
     own:AddEffects(EF_BONEMERGE)
     own:AddEffects(EF_BONEMERGE_FASTCULL)
     --own:SetNoDraw()
@@ -1253,6 +1266,24 @@ function ENT:TryGetUp(animTbl, forced)
     -- 在这插入检测
     if not forced and not self:ShouldGetUp() then return end
 
+    if not animTbl then
+
+        local rag = self:GetRagdoll()
+        local besties = {}
+        local _, pitch = rag:GetBonePosition(0)
+        pitch = pitch.p
+        for _, data in ipairs(self.AnimationTable.Getup) do
+            local angData = data.Pitch or {0, 0}
+            local min, max, rev = angData[1], angData[2], angData[3]
+            if rev and (pitch > min and pitch < max) or not rev and (pitch < min or pitch > max) then 
+                continue
+            end
+            besties[#besties + 1] = data
+        end
+        animTbl = next(besties) and besties[math.random(#besties)] or self.AnimationTable.Getup[math.random(#self.AnimationTable.Getup)]
+
+    end
+
     local own = self:GetOwner()
     local rag = self:GetRagdoll()
 
@@ -1310,7 +1341,8 @@ function ENT:ShouldGetUp()
 
         if dist > 25 then return false end
     else
-        local tr = util.TraceLine({start = rag:GetPos(), endpos = rag:GetPos() - Vector(0, 0, 10), filter = {self, own}, mask = MASK_ALL})
+        local pos = rag:GetBonePosition(0)
+        local tr = util.TraceLine({start = pos + Vector(0, 0, 5), endpos = pos - Vector(0, 0, 10), filter = {self, own}, mask = MASK_ALL})
         return tr.Hit
     end
 
@@ -1329,6 +1361,7 @@ function ENT:RestorePlayerData()
     
     own:SetMoveType(self.m_iOwnMoveType or MOVETYPE_STEP)
     own:SetCollisionGroup(self.m_iOwnCollisionGroup or COLLISION_GROUP_PLAYER)
+    own:SetSolid(self.m_iOwnSolid or SOLID_OBB)
 
 end
 
@@ -1374,6 +1407,7 @@ function ENT:OnRemove()
     end
     
     if IsValid(rag) then
+        -- 不确定是哪个修复的bug
         constraint.RemoveAll(rag)
         SafeRemoveEntityDelayed(rag, tickInterval)
     end
@@ -1487,7 +1521,7 @@ function ENT:Think()
             rag.RenderOverride = self.CustomRagRenderOverride
         end
 
-        rag:SetFlexScale(own:GetFlexScale())
+        --rag:SetFlexScale(own:GetFlexScale())
 
         return true 
     end
@@ -1572,6 +1606,7 @@ function ENT:Think()
         if consc < 45 then
             own:ClearSchedule()
             --own:ClearGoal()
+            --own:SetActivity(ACT_IDLE)
             own:NextThink(ct + 0.15)
             --print(1)
         end
@@ -1736,6 +1771,7 @@ function ENT:Think()
             rag:SetVelocity(Vector())
             self:SetVelocity(Vector())
             self:RemoveSelf()
+            own:SetPos(tr.HitPos, true)
             local faceAng = self.GettingUp_FaceAng
             timer.Simple(tickInterval, function()
                 if not IsValid(own) then return end
@@ -1793,6 +1829,10 @@ function ENT:Think()
     if own:GetCollisionGroup() ~= COLLISION_GROUP_IN_VEHICLE then
         self.m_iOwnCollisionGroup = own:GetCollisionGroup()
         own:SetCollisionGroup(COLLISION_GROUP_IN_VEHICLE)
+    end
+    if own:GetSolid() ~= SOLID_NONE then
+        self.m_iOwnSolid = own:GetSolid()
+        own:SetSolid(SOLID_NONE)
     end
 
     if self.NextBroadcastNWEntity <= ct then
@@ -1914,6 +1954,8 @@ function ENT:Tick()
     elseif not own:IsEffectActive(EF_BONEMERGE) then
         own:AddEffects(EF_BONEMERGE)
     end
+
+    --cloneAtoB(own, rag, true)
     --rag:SetFriction(10)
 
     --print(rag:GetVelocity())
@@ -3207,6 +3249,12 @@ function ENT:Tick()
             data[k] = (data[k] or 0) * forceMul * self.OnGroundState * (data.addMass and mass or 1)
         end
 
+        --data.maxspeed = nil
+        --data.maxspeeddamp = nil
+
+
+        --if data.maxspeed > 0 then print(bName) end
+
         --[[if data.maxspeeddamp then
             data.maxspeeddamp = data.maxspeeddamp * muldamp
         end
@@ -3293,29 +3341,30 @@ local shouldDrawVM
 local huge = math.huge
 function ENT:Draw(fl)
     local own = self:GetOwner()
-    if own ~= LocalPlayer():GetViewEntity() then
+    --if own ~= LocalPlayer():GetViewEntity() then
         --own:SetNoDraw(true)
-        if isfunction(self.CustomOwnerRenderOverride) and self.CustomOwnerRenderOverride == own.RenderOverride then return end
-        
-        local old = own.RenderOverride
+    if isfunction(self.CustomOwnerRenderOverride) and self.CustomOwnerRenderOverride == own.RenderOverride then return end
+    
+    local old = own.RenderOverride
 
-        self.CustomOwnerRenderOverride = function(own, fl, ...)
-            if not IsValid(self) then
-                own.RenderOverride = old
-                return
-            end
+    self.CustomOwnerRenderOverride = function(own, fl, ...)
+        if not IsValid(self) then
+            own.RenderOverride = old
+            return
         end
-        own.RenderOverride = self.CustomOwnerRenderOverride
     end
+    own.RenderOverride = self.CustomOwnerRenderOverride
+    --end
 end
 
 function ENT:CustomRagRenderOverride(fl)
-    --if shouldDrawVM then return end
+    --do return end
+    --if not shouldDrawVM then return end
 
     local ctrl = Savee_AdvRagKnockdown_GetController(self)
     if not IsValid(ctrl) then return end
     local own = ctrl:GetOwner()
-    if not IsValid(own) then return end
+    if not IsValid(own) or own:GetMoveParent() ~= self then return end
 
     local ve = LocalPlayer():GetViewEntity()
 
@@ -3367,9 +3416,9 @@ function ENT:CustomRagRenderOverride(fl)
         own:SetBoneMatrix(i, mtx)
     end
 
-    for i = 0, self:GetFlexNum() - 1 do
+    --[[for i = 0, self:GetFlexNum() - 1 do
         self:SetFlexWeight(i, own:GetFlexWeight(i))
-    end   
+    end  ]] 
 
 
     self:DrawModel(fl)

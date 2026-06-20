@@ -892,7 +892,7 @@ function ENT:ShouldGetUp()
 
         if dist > 25 then return false end
     else
-        local tr = util.TraceLine({start = rag:GetPos(), endpos = rag:GetPos() - Vector(0, 0, 10), filter = {self, own}})
+        local tr = util.TraceLine({start = rag:GetPos() + Vector(0, 0, 2), endpos = rag:GetPos() - Vector(0, 0, 10), filter = {self, own}})
         return rag:GetWaterLevel() > 1 or tr.Hit
     end
 
