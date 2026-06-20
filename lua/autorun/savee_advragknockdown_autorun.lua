@@ -32,6 +32,8 @@ CreateConVar(cvPrefix .. "statcalc_npc_conscdmgmul", 1, cvTags, "[对NPC] 意识
 CreateConVar(cvPrefix .. "statcalc_ply_staminadmgmul", 1, cvTags, "[对玩家] 体力伤害乘数", 0)
 CreateConVar(cvPrefix .. "statcalc_ply_conscdmgmul", 1, cvTags, "[对玩家] 意识伤害乘数", 0)
 
+local clcv_nodefkeybind = CreateClientConVar(cvPrefix .. "cl_disabledefaultkeybind", "0", true, true, "禁用默认的瞄准检测, 可能对某些服务器的设置有帮助", 0, 1)
+
 local entMeta = FindMetaTable("Entity")
 local plyMeta = FindMetaTable("Player")
 local npcMeta = FindMetaTable("NPC")
@@ -1925,7 +1927,7 @@ else
         ---@type Entity
         local ctrl = getController(ply)
         if not IsValid(ctrl) then return end
-        local aimingBind = input.LookupBinding("+advragknockdown_aimweapon") or input.LookupBinding(cvPrefix .. "toggleaimweapon")
+        local aimingBind = clcv_nodefkeybind:GetBool() and input.LookupBinding("+advragknockdown_aimweapon") or input.LookupBinding(cvPrefix .. "toggleaimweapon")
         if not aimingBind then
             --print(1)
             --print(cmd:KeyDown(IN_USE))

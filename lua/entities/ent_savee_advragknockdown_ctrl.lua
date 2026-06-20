@@ -644,6 +644,7 @@ local function replaceRagconstraint(rag, bchild, bparent, minAng, maxAng, fric)
     
     local ent = ents.Create("base_anim")
     ent:SetModel(rag:GetModel())
+    ent:SetNoDraw(true)
     ent:Spawn()
     
     -- 我希望布娃娃的相对骨骼修改始终如一
@@ -651,7 +652,7 @@ local function replaceRagconstraint(rag, bchild, bparent, minAng, maxAng, fric)
     local armPos, armAng = ent:GetBonePosition(ent:LookupBone(bparent))
     local handPos, handAng = ent:GetBonePosition(ent:LookupBone(bchild))
     
-    SafeRemoveEntity(ent)
+    SafeRemoveEntityDelayed(ent, tickInterval)
     
     lArmP:SetPos(armPos)
     lArmP:SetAngles(armAng)
@@ -724,10 +725,10 @@ local function modifyRagdoll(rag, replace)
     --PrintTable(constraint.FindConstraints(rag, "AdvBallsocket"))
     
     -- dumbass_define_animandphys.qci
-    if replace then
+    --if replace then
         replaceRagconstraint(rag, "ValveBiped.Bip01_L_Hand", "ValveBiped.Bip01_L_Forearm", -angMax, angMax, 0)
         replaceRagconstraint(rag, "ValveBiped.Bip01_R_Hand", "ValveBiped.Bip01_R_Forearm", -angMax, angMax, 0)
-    end
+    --end
 
 
     --local self = rag.Savee_AdvRagKnockdown_Controller
@@ -956,7 +957,7 @@ function ENT:Initialize()
 
     rag:SetNW2Entity("Savee_AdvRagKnockdown_Controller", self)
 
-    self:DeleteOnRemove(rag)
+    --self:DeleteOnRemove(rag)
 
     --rag:DeleteOnRemove(self)
     --rag:CollisionRulesChanged()
@@ -1044,6 +1045,8 @@ function ENT:Initialize()
 
     rag:AddCallback("PhysicsCollide", function(rag, data)
     
+        if not IsValid(self) then return end
+
         local ct = CurTime()
         if ct <= self.PreventPhysAttackTill then return end
 
@@ -1371,10 +1374,8 @@ function ENT:OnRemove()
     end
     
     if IsValid(rag) then
-        for _, const in ipairs(rag.Savee_AdvRagKnockdown_ShitConsts) do
-            if not IsValid(const) then continue end
-            const:Fire("Break")
-        end
+        constraint.RemoveAll(rag)
+        SafeRemoveEntityDelayed(rag, tickInterval)
     end
     --if IsValid(self.GetupAnimModel) then SafeRemoveEntityDelayed(self.GetupAnimModel, 0) end
     --if IsValid(self.FakePlyModel) then SafeRemoveEntityDelayed(self.FakePlyModel, 0) end
@@ -3312,8 +3313,10 @@ function ENT:CustomRagRenderOverride(fl)
     --if shouldDrawVM then return end
 
     local ctrl = Savee_AdvRagKnockdown_GetController(self)
+    if not IsValid(ctrl) then return end
     local own = ctrl:GetOwner()
-    if not IsValid(ctrl) or not IsValid(own) then return end
+    if not IsValid(own) then return end
+
     local ve = LocalPlayer():GetViewEntity()
 
     own:SetupBones()
