@@ -1149,7 +1149,7 @@ if SERVER then
 
     end
 
-    local function replaceRagconstraint(rag, bchild, bparent, minAng, maxAng, fric)
+    local function replaceRagconstraint(rag, pObjs, bchild, bparent, minAng, maxAng, fric)
     
         if not IsValid(rag) or not bchild or not bparent then return end
         if not rag:LookupBone(bparent) or not rag:LookupBone(bchild) then return end
@@ -1161,43 +1161,81 @@ if SERVER then
         
         -- 我甚至记得下来完整的前缀
         -- 每个正常模型都有的玩意, 没有就让它滚
-        local lArm = rag:TranslateBoneToPhysBone(rag:LookupBone(bparent))
-        local lHand = rag:TranslateBoneToPhysBone(rag:LookupBone(bchild))
-        local lArmP = rag:GetPhysicsObjectNum(lArm)
-        local lHandP = rag:GetPhysicsObjectNum(lHand)
+        local lArm = pObjs and pObjs[bparent].id or rag:TranslateBoneToPhysBone(rag:LookupBone(bparent))
+        local lHand = pObjs and pObjs[bchild].id or rag:TranslateBoneToPhysBone(rag:LookupBone(bchild))
+        local lArmP = pObjs and pObjs[bparent].pObj or rag:GetPhysicsObjectNum(rag:TranslateBoneToPhysBone(rag:LookupBone(bparent)))
+        local lHandP = pObjs and pObjs[bchild].pObj or rag:GetPhysicsObjectNum(rag:TranslateBoneToPhysBone(rag:LookupBone(bchild)))
+        --print(rag:GetBoneName(rag:LookupBone(bparent)), rag:GetBoneName(rag:LookupBone(bchild)), rag:GetBoneName(rag:TranslatePhysBoneToBone(lArm)))
         local oldHandPos, oldHandAng, oldArmPos, oldArmAng = lHandP:GetPos(), lHandP:GetAngles(), lArmP:GetPos(), lArmP:GetAngles()
+        --local oldHandAng = lHandP:GetAngles()
 
         --lHandP:ClearGameFlag(FVPHYSICS_PART_OF_RAGDOLL)
         --lHandP:ClearGameFlag(FVPHYSICS_MULTIOBJECT_ENTITY)
         
         local ent = ents.Create("base_anim")
         ent:SetModel(rag:GetModel())
+        ent:SetPos(rag:GetPos())
+        ent:SetNoDraw(true)
+        ent:DrawShadow(false)
         ent:Spawn()
         
         -- 我希望布娃娃的相对骨骼修改始终如一
         -- constraint.AdvBallsocket局部过头(即相对当前角度), 需要复原才行
-        local armPos, armAng = ent:GetBonePosition(ent:LookupBone(bparent))
-        local handPos, handAng = ent:GetBonePosition(ent:LookupBone(bchild))
-        
-        SafeRemoveEntity(ent)
-        
+        local parentMtx, childMtx = ent:GetBoneMatrix(ent:LookupBone(bparent)), ent:GetBoneMatrix(ent:LookupBone(bchild))
+        if not parentMtx or not childMtx then SafeRemoveEntityDelayed(ent, tickInterval) return end
+        local armPos, armAng = parentMtx:GetTranslation(), parentMtx:GetAngles()
+        local handPos, handAng = childMtx:GetTranslation(), childMtx:GetAngles()
+
+        lArmP:EnableMotion(false)
+        lHandP:EnableMotion(false)
+
         lArmP:SetPos(armPos)
         lArmP:SetAngles(armAng)
+
         lHandP:SetPos(handPos)
         lHandP:SetAngles(handAng)
         
         local wtlLH = WorldToLocal(lHandP:GetPos(), lHandP:GetAngles(), lArmP:GetPos(), lArmP:GetAngles())
-        --local
-        rag:RemoveInternalConstraint(lHand)
-        local const = constraint.AdvBallsocket(rag, rag, lArm, lHand, wtlLH, nil, 0, 0, minAng.p, minAng.y, minAng.r, maxAng.p, maxAng.y, maxAng.r, fric, fric, fric, 0, 1)
-        if IsValid(const) then 
-            table.insert(rag.Savee_AdvRagKnockdown_ShitConsts, const)
-        end
 
+        --lHandP:SetAngles(oldArmAng)
+        -- 瞧瞧我发现了什么, phys_ragdollconstraint!
+        -- Verified By Savee14702 100%(Except one axis)
+        --lHandP:SetAngles(oldHandAng)
+        --lHandP:Wake()
+        --local const = constraint.AdvBallsocket(rag, rag, lArm, lHand, wtlLH, nil, 0, 0, minAng.p, minAng.y, minAng.r, maxAng.p, maxAng.y, maxAng.r, fric, fric, fric, 0, 1)
+        --local _, correctedAng = LocalToWorld(vector_origin, Angle(0, 0, -90), vector_origin, lArmP:GetAngles())
+        --lHandP:SetAngles(correctedAng)
+        constraint.AdvBallsocket(rag, rag, lArm, lHand, wtlLH, nil, 0, 0, minAng.p, minAng.y, minAng.r, maxAng.p, maxAng.y, maxAng.r, fric, fric, fric, 0, 1)
+        --print(const)
+        --local constEst = constraint.Elastic(rag, rag, lArm, lHand, wtlLH, vector_origin, 20000, 500, 0.1, "", 0, false, Color(0, 0, 0, 0))
+        --local constRop = constraint.Rope(rag, rag, lArm, lHand, wtlLH, vector_origin, 1, 01, 0, 0, "", false, Color(0, 0, 0, 0))
+        --const:SetSaveValue("m_bSimulatedEveryTick", true)
+        --PrintTable(const:GetSaveTable(true))
+
+        --table.insert(rag.Savee_AdvRagKnockdown_ShitConsts, const)
+        
+        --constraint.Rope(rag, rag, lArm, lHand, wtlLH, Vector(), 0.01, 0, 0, 0, "", false, Color(0, 0, 0, 0))
         lArmP:SetPos(oldArmPos)
         lArmP:SetAngles(oldArmAng)
         lHandP:SetPos(oldHandPos)
         lHandP:SetAngles(oldHandAng)
+
+        lArmP:EnableMotion(true)
+        lHandP:EnableMotion(true)
+
+        SafeRemoveEntityDelayed(ent, tickInterval)
+        
+        --lHandP:SetAngles(oldArmAng)
+        --lHandP:Wake()
+
+        --constraint.AddConstraintTable(rag, const)
+        --[[if IsValid(constEst) then 
+            table.insert(rag.Savee_AdvRagKnockdown_ShitConsts, constEst)
+        end
+        if IsValid(constRop) then 
+            table.insert(rag.Savee_AdvRagKnockdown_ShitConsts, constRop)
+        end]]
+
 
         --print("Approved By Queen JIAFEI 100%")
 
@@ -1663,8 +1701,8 @@ if SERVER then
             if not IsValid(rag) or not IsValid(own) or not own:IsPlayer() or not own:Alive() then ent:RemoveSelf() continue end
 
             local angMax = Angle(65, 80, 80)
-            replaceRagconstraint(rag, "ValveBiped.Bip01_L_Hand", "ValveBiped.Bip01_L_Forearm", -angMax, angMax, 0)
-            replaceRagconstraint(rag, "ValveBiped.Bip01_R_Hand", "ValveBiped.Bip01_R_Forearm", -angMax, angMax, 0)
+            replaceRagconstraint(rag, ent.RagPObjs, "ValveBiped.Bip01_L_Hand", "ValveBiped.Bip01_L_Forearm", -angMax, angMax, 0)
+            replaceRagconstraint(rag, ent.RagPObjs, "ValveBiped.Bip01_R_Hand", "ValveBiped.Bip01_R_Forearm", -angMax, angMax, 0)
             
         end
     

@@ -643,13 +643,16 @@ local function replaceRagconstraint(rag, pObjs, bchild, bparent, minAng, maxAng,
     local lHandP = pObjs and pObjs[bchild].pObj or rag:GetPhysicsObjectNum(rag:TranslateBoneToPhysBone(rag:LookupBone(bchild)))
     --print(rag:GetBoneName(rag:LookupBone(bparent)), rag:GetBoneName(rag:LookupBone(bchild)), rag:GetBoneName(rag:TranslatePhysBoneToBone(lArm)))
     local oldHandPos, oldHandAng, oldArmPos, oldArmAng = lHandP:GetPos(), lHandP:GetAngles(), lArmP:GetPos(), lArmP:GetAngles()
+    --local oldHandAng = lHandP:GetAngles()
 
     --lHandP:ClearGameFlag(FVPHYSICS_PART_OF_RAGDOLL)
     --lHandP:ClearGameFlag(FVPHYSICS_MULTIOBJECT_ENTITY)
     
     local ent = ents.Create("base_anim")
     ent:SetModel(rag:GetModel())
+    ent:SetPos(rag:GetPos())
     ent:SetNoDraw(true)
+    ent:DrawShadow(false)
     ent:Spawn()
     
     -- 我希望布娃娃的相对骨骼修改始终如一
@@ -660,25 +663,28 @@ local function replaceRagconstraint(rag, pObjs, bchild, bparent, minAng, maxAng,
     local handPos, handAng = childMtx:GetTranslation(), childMtx:GetAngles()
     
     SafeRemoveEntityDelayed(ent, tickInterval)
-    
+
+    lArmP:EnableMotion(false)
+    lHandP:EnableMotion(false)
+
     lArmP:SetPos(armPos)
     lArmP:SetAngles(armAng)
+
     lHandP:SetPos(handPos)
     lHandP:SetAngles(handAng)
     
     local wtlLH = WorldToLocal(lHandP:GetPos(), lHandP:GetAngles(), lArmP:GetPos(), lArmP:GetAngles())
-    --local
-    rag:RemoveInternalConstraint(lHand)
-    --_, minAng = LocalToWorld(vector_origin, minAng, vector_origin, lArmP:GetAngles())
-    --_, maxAng = LocalToWorld(vector_origin, maxAng, vector_origin, lArmP:GetAngles())
-    
+
     --lHandP:SetAngles(oldArmAng)
     -- 瞧瞧我发现了什么, phys_ragdollconstraint!
     -- Verified By Savee14702 100%(Except one axis)
     --lHandP:SetAngles(oldHandAng)
     --lHandP:Wake()
     --local const = constraint.AdvBallsocket(rag, rag, lArm, lHand, wtlLH, nil, 0, 0, minAng.p, minAng.y, minAng.r, maxAng.p, maxAng.y, maxAng.r, fric, fric, fric, 0, 1)
-    local const = constraint.AdvBallsocket(rag, rag, lArm, lHand, wtlLH, nil, 0, 0, minAng.p, minAng.y, minAng.r, maxAng.p, maxAng.y, maxAng.r, fric, fric, fric, 0, 1)
+    --local _, correctedAng = LocalToWorld(vector_origin, Angle(0, 0, -90), vector_origin, lArmP:GetAngles())
+    --lHandP:SetAngles(correctedAng)
+    constraint.AdvBallsocket(rag, rag, lArm, lHand, wtlLH, nil, 0, 0, minAng.p, minAng.y, minAng.r, maxAng.p, maxAng.y, maxAng.r, fric, fric, fric, 0, 1)
+    rag:RemoveInternalConstraint(lHand)
     --print(const)
     --local constEst = constraint.Elastic(rag, rag, lArm, lHand, wtlLH, vector_origin, 20000, 500, 0.1, "", 0, false, Color(0, 0, 0, 0))
     --local constRop = constraint.Rope(rag, rag, lArm, lHand, wtlLH, vector_origin, 1, 01, 0, 0, "", false, Color(0, 0, 0, 0))
@@ -688,29 +694,26 @@ local function replaceRagconstraint(rag, pObjs, bchild, bparent, minAng, maxAng,
     --table.insert(rag.Savee_AdvRagKnockdown_ShitConsts, const)
     
     --constraint.Rope(rag, rag, lArm, lHand, wtlLH, Vector(), 0.01, 0, 0, 0, "", false, Color(0, 0, 0, 0))
+    lArmP:SetPos(oldArmPos)
+    lArmP:SetAngles(oldArmAng)
+    lHandP:SetPos(oldHandPos)
+    lHandP:SetAngles(oldHandAng)
+
+    lArmP:EnableMotion(true)
+    lHandP:EnableMotion(true)
+
     
     --lHandP:SetAngles(oldArmAng)
     --lHandP:Wake()
 
     --constraint.AddConstraintTable(rag, const)
-    if IsValid(const) then 
-        table.insert(rag.Savee_AdvRagKnockdown_ShitConsts, const)
-        --local ctrl = rag.Savee_AdvRagKnockdown_Controller
-        --[[const:SetKeyValue("teleportfollowdistance", 1)
-        const:Spawn()
-        const:Activate()]]
-    end
     --[[if IsValid(constEst) then 
         table.insert(rag.Savee_AdvRagKnockdown_ShitConsts, constEst)
     end
     if IsValid(constRop) then 
         table.insert(rag.Savee_AdvRagKnockdown_ShitConsts, constRop)
     end]]
-    
-    lArmP:SetPos(oldArmPos)
-    lArmP:SetAngles(oldArmAng)
-    lHandP:SetPos(oldHandPos)
-    lHandP:SetAngles(oldHandAng)
+
     
     --print("Approved By Queen JIAFEI 100%")
     
@@ -738,7 +741,7 @@ local function modifyRagdoll(rag, pObjs)
     replaceRagconstraint(rag, pObjs, "ValveBiped.Bip01_R_Hand", "ValveBiped.Bip01_R_Forearm", -angMax, angMax, 0)
     --end
 
-
+    do return end
     --local self = rag.Savee_AdvRagKnockdown_Controller
     --[[local pObjs = self.RagPObjs
     
@@ -886,6 +889,10 @@ function ENT:Initialize()
             return self:PreDrawPlayerHands(...)
 
         end)]]
+
+        timer.Simple(tickInterval, function()
+            self.Initialized = true
+        end)
         
         return 
     end
@@ -934,7 +941,6 @@ function ENT:Initialize()
     --rag:RemoveFlags(FL_OBJECT)
 
     rag:Spawn()
-    rag.Savee_AdvRagKnockdown_ShitConsts = {}
     rag.Savee_AdvRagKnockdown_Controller = self
 
     --[[local lHand = rag:LookupBone("ValveBiped.Bip01_L_Hand")
@@ -3341,9 +3347,10 @@ local shouldDrawVM
 local huge = math.huge
 function ENT:Draw(fl)
     local own = self:GetOwner()
+    --local rag = self:GetRagdoll()
     --if own ~= LocalPlayer():GetViewEntity() then
         --own:SetNoDraw(true)
-    if isfunction(self.CustomOwnerRenderOverride) and self.CustomOwnerRenderOverride == own.RenderOverride then return end
+    if (isfunction(self.CustomOwnerRenderOverride) and self.CustomOwnerRenderOverride == own.RenderOverride) then return end
     
     local old = own.RenderOverride
 
@@ -3352,8 +3359,11 @@ function ENT:Draw(fl)
             own.RenderOverride = old
             return
         end
+        --rag:RenderOverride(fl)
     end
     own.RenderOverride = self.CustomOwnerRenderOverride
+    --rag.RenderOverride = self.CustomRagRenderOverride
+    --rag:RenderOverride(fl)
     --end
 end
 
@@ -3364,7 +3374,7 @@ function ENT:CustomRagRenderOverride(fl)
     local ctrl = Savee_AdvRagKnockdown_GetController(self)
     if not IsValid(ctrl) then return end
     local own = ctrl:GetOwner()
-    if not IsValid(own) or own:GetMoveParent() ~= self then return end
+    if not IsValid(own) or (self.Initialized and own:GetMoveParent() ~= self) then return end
 
     local ve = LocalPlayer():GetViewEntity()
 
