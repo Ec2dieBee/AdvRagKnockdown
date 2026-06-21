@@ -942,7 +942,7 @@ function ENT:Initialize()
 
     rag:Spawn()
     rag.Savee_AdvRagKnockdown_Controller = self
-
+    
     --[[local lHand = rag:LookupBone("ValveBiped.Bip01_L_Hand")
     local rHand = rag:LookupBone("ValveBiped.Bip01_R_Hand")
 
@@ -963,8 +963,9 @@ function ENT:Initialize()
     end
     --rag:SetParent(nil)
     --rag:RemoveEffects(EF_BONEMERGE)
-    --rag:AddEffects(EFL_DONTBLOCKLOS)
-    --rag:AddFlags(FL_NOTARGET)
+    rag:AddEffects(EFL_DONTBLOCKLOS)
+    rag:AddFlags(FL_NOTARGET)
+    rag:AddFlags(FL_NPC)
     --rag:RemoveFlags(FL_OBJECT)
     rag:SetCollisionGroup(own:IsPlayer() and COLLISION_GROUP_PLAYER or COLLISION_GROUP_DEBRIS_TRIGGER)
 
@@ -1163,9 +1164,14 @@ function ENT:Initialize()
         -- [ARC9] Modern Warfare 2019 飞刀支持
         modifyRagdoll(rag, pObjs)
         own:SetMoveParent(rag)
+        own:SetLocalPos(vector_origin)
         self.Initialized = true
     end)
-    --end
+
+    if own:IsNPC() then
+        constraint.NoCollide(own, rag, -1, -1, true)
+    end
+
     self.m_iOwnMoveType = own:GetMoveType()
     self.m_iOwnCollisionGroup = own:GetCollisionGroup()
     self.m_iOwnSolid = own:GetSolid()
@@ -1175,10 +1181,6 @@ function ENT:Initialize()
     own:AddEffects(EF_BONEMERGE)
     own:AddEffects(EF_BONEMERGE_FASTCULL)
     --own:SetNoDraw()
-
-    --if own:IsPlayer() then
-    --own:SetLocalPos(Vector(0, 0, 0), true)
-    --end
 
     local aimBlock = own:IsNPC() and aimBlackListedNPCClass[own:GetClass()]
 
@@ -1527,7 +1529,7 @@ function ENT:Think()
             rag.RenderOverride = self.CustomRagRenderOverride
         end
 
-        --rag:SetFlexScale(own:GetFlexScale())
+        rag:SetFlexScale(own:GetFlexScale())
 
         return true 
     end
@@ -2154,7 +2156,6 @@ function ENT:Tick()
         --pelvis:EnableMotion(false)
         local _, angFace = LocalToWorld(vector_origin, Angle(0, 90, 0), vector_origin, pelvisAng)
         shadowCtrls["ValveBiped.Bip01_Pelvis"] = {
-            pos = vector_origin,
             angle = angFace,
             maxspeed = pelvisspd,
             maxspeeddamp = pelvisspddamp,
@@ -2171,7 +2172,6 @@ function ENT:Tick()
         --pObjs["ValveBiped.Bip01_L_Thigh"].pObj:SetAngles(lLeg)
         --pObjs["ValveBiped.Bip01_R_Thigh"].pObj:SetAngles(rLeg)
         shadowCtrls["ValveBiped.Bip01_L_Thigh"] = {
-            pos = vector_origin,
             angle = lLeg,
             maxspeed = legspd,
             maxspeeddamp = legspddamp,
@@ -2182,7 +2182,6 @@ function ENT:Tick()
             addMass = legUseMass,
         }
         shadowCtrls["ValveBiped.Bip01_R_Thigh"] = {
-            pos = vector_origin,
             angle = rLeg,
             maxspeed = legspd,
             maxspeeddamp = legspddamp,
@@ -2195,7 +2194,6 @@ function ENT:Tick()
         _, lLeg = LocalToWorld(vector_origin, Angle(0, 120, 0), vector_origin, lLeg)
         _, rLeg = LocalToWorld(vector_origin, Angle(0, 120, 0), vector_origin, rLeg)
         shadowCtrls["ValveBiped.Bip01_L_Calf"] = {
-            pos = vector_origin,
             angle = lLeg,
             maxspeed = legspd,
             maxspeeddamp = legspddamp,
@@ -2206,7 +2204,6 @@ function ENT:Tick()
             addMass = legUseMass,
         }
         shadowCtrls["ValveBiped.Bip01_R_Calf"] = {
-            pos = vector_origin,
             angle = rLeg,
             maxspeed = legspd,
             maxspeeddamp = legspddamp,
@@ -2359,7 +2356,7 @@ function ENT:Tick()
 
             pObj:ComputeShadowControl({
                 secondstoarrive = 0.01,
-                pos = vector_origin,
+                
                 angle = ang,
                 maxspeed = 0,
                 maxspeeddamp = 0,
@@ -2382,7 +2379,7 @@ function ENT:Tick()
         --print(torso)
         shadowCtrls["ValveBiped.Bip01_Spine2"] = {
             --secondstoarrive = 0.01,
-            pos = vector_origin,
+            
             angle = angFace,
             maxspeed = torsospd,
             maxspeeddamp = torsospddamp,
@@ -2404,7 +2401,7 @@ function ENT:Tick()
         
         shadowCtrls["ValveBiped.Bip01_Head1"] = {
             --secondstoarrive = 0.15,
-            pos = vector_origin,
+            
             angle = angFace,
             maxspeed = headspd,
             maxspeeddamp = headspddamp,
@@ -2573,10 +2570,7 @@ function ENT:Tick()
 
             shadowCtrls["ValveBiped.Bip01_L_UpperArm"] = {
                 --secondstoarrive = tickInterval / 10,
-                pos = lhToLocalPos,
                 angle = angLUpperArm,
-                maxspeed = 0,
-                maxspeeddamp = 0,
                 maxangular = armaimang,
                 maxangulardamp = armaimangdamp,
                 dampfactor = armaimdampfactor,
@@ -2585,10 +2579,7 @@ function ENT:Tick()
             }
             shadowCtrls["ValveBiped.Bip01_L_Forearm"] = {
                 --secondstoarrive = tickInterval / 10,
-                pos = lhToLocalPos,
                 angle = angLForeArm,
-                maxspeed = 0,
-                maxspeeddamp = 0,
                 maxangular = armaimang,
                 maxangulardamp = armaimangdamp,
                 dampfactor = armaimdampfactor,
@@ -2597,10 +2588,7 @@ function ENT:Tick()
             }
             shadowCtrls["ValveBiped.Bip01_R_UpperArm"] = {
                 --secondstoarrive = tickInterval / 10,
-                pos = rhToLocalPos,
                 angle = angRUpperArm,
-                maxspeed = 0,
-                maxspeeddamp = 0,
                 maxangular = armaimang,
                 maxangulardamp = armaimangdamp,
                 dampfactor = armaimdampfactor,
@@ -2609,10 +2597,7 @@ function ENT:Tick()
             }
             shadowCtrls["ValveBiped.Bip01_R_Forearm"] = {
                 --secondstoarrive = tickInterval / 10,
-                pos = rhToLocalPos,
                 angle = angRForeArm,
-                maxspeed = 0,
-                maxspeeddamp = 0,
                 maxangular = armaimang,
                 maxangulardamp = armaimangdamp,
                 dampfactor = armaimdampfactor,
@@ -2628,7 +2613,6 @@ function ENT:Tick()
             -- 力竭了, 希望你可以从这里理解为什么现实中右手持步枪向右转向瞄准有速度减益了(我记得这是真的)
             shadowCtrls["ValveBiped.Bip01_L_Hand"] = {
                 --secondstoarrive = tickInterval / 10,
-                pos = lhToLocalPos,
                 angle = lhToLocalAng,
                 maxspeed = handaimspd,
                 maxspeeddamp = handaimspddamp,
@@ -2641,7 +2625,6 @@ function ENT:Tick()
             }
             shadowCtrls["ValveBiped.Bip01_R_Hand"] = {
                 --secondstoarrive = tickInterval / 10,
-                pos = rhToLocalPos,
                 angle = rHandFaceAng,
                 maxspeed = handaimspd,
                 maxspeeddamp = handaimspddamp,
@@ -2873,7 +2856,7 @@ function ENT:Tick()
             --pObjs["ValveBiped.Bip01_Head1"].pObj:EnableMotion(false)
             shadowCtrls["ValveBiped.Bip01_Head1"] = {
                 --secondstoarrive = 0.15,
-                pos = vector_origin,
+                
                 angle = angFace,
                 maxspeed = headspd,
                 maxspeeddamp = headspddamp,
@@ -2886,7 +2869,7 @@ function ENT:Tick()
             local mul = aimingWeapon and 1 or 0.01
             shadowCtrls["ValveBiped.Bip01_Spine2"] = {
                 --secondstoarrive = 0.15,
-                pos = vector_origin,
+                
                 angle = angFaceTorso,
                 maxspeed = torsospd * mul,
                 maxspeeddamp = torsospddamp * mul,
@@ -3228,7 +3211,6 @@ function ENT:Tick()
     --self:SetStamina(0)
 
     local forceMul = (1 + math.max(extrapObjs / 5, 0)) * math.min(1.5, self:GetStamina() / 60)
-    local deltaStuff = forceMul
 
 
     --print(forceMul)
@@ -3426,9 +3408,9 @@ function ENT:CustomRagRenderOverride(fl)
         own:SetBoneMatrix(i, mtx)
     end
 
-    --[[for i = 0, self:GetFlexNum() - 1 do
+    for i = 0, self:GetFlexNum() - 1 do
         self:SetFlexWeight(i, own:GetFlexWeight(i))
-    end  ]] 
+    end
 
 
     self:DrawModel(fl)

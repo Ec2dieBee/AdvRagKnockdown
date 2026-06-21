@@ -1678,7 +1678,7 @@ if SERVER then
 
     hook.Add("PlayerUse", "Savee_AdvRagKnockdown_HelpFriendly", function(ply, ent)
         -- 无法在被击倒时扶起队友.jpg
-        if IsValid(getController(ply)) then return end
+        if IsValid(getController(ply)) or not ply:KeyDown(IN_WALK) then return end
 
         local ctrl = getController(ent)
         if not IsValid(ctrl) then return end 
