@@ -1948,9 +1948,9 @@ function ENT:Tick()
     -- 等等, upvalue超了?
     -- 你的性能上有僵尸, 你的性能上有僵尸(?)
 
-    local torsoang, torsoangdamp, torsospd, torsospddamp, torsodampfactor, torsodelta = 450, 150, 0, 0, 0.5, 0.2
+    local torsoang, torsoangdamp, torsospd, torsospddamp, torsodampfactor, torsodelta = 450, 150, 0, 0, 0.8, 0.2
     --local torsomovespd, torsomovespddamp, torsomovespddelta = 450, 450, 0.2
-    local headang, headangdamp, headspd, headspddamp, headdampfactor, headdelta = 70, 20, 0, 0, 0.4, 0.05
+    local headang, headangdamp, headspd, headspddamp, headdampfactor, headdelta = 140, 50, 0, 0, 0.7, 0.05
     local handang, handangdamp, handspd, handspddamp, handdampfactor, handdelta = 265, 265, 235, 235, 0.8, 0.2
     local handaimang, handaimangdamp, handaimspd, handaimspddamp, handaimdampfactor, handaimdelta = 550, 150, 5, 0, 0.8, 0.05
     local armaimang, armaimangdamp, armaimspd, armaimspddamp, armaimdampfactor, armaimdelta = 150, 150, 0, 0, 0.5, 0.1
@@ -2946,7 +2946,7 @@ function ENT:Tick()
         if in_duck then
             ang:RotateAroundAxis(aea:Right(), 25)
         elseif self.LowPose then --IsValid(wep) and wep.ARC9 and wep:GetBipod() then
-            ang:RotateAroundAxis(aea:Right(), -40)
+            ang:RotateAroundAxis(aea:Right(), -30)
             --shadowCtrls["ValveBiped.Bip01_Spine2"].maxangular = shadowCtrls["ValveBiped.Bip01_Spine2"].maxangular
             --shadowCtrls["ValveBiped.Bip01_Spine2"].maxspeed = shadowCtrls["ValveBiped.Bip01_Spine2"].maxspeed
             --shadowCtrls["ValveBiped.Bip01_Spine2"].maxspeeddamp = shadowCtrls["ValveBiped.Bip01_Spine2"].maxspeeddamp * 1.2
