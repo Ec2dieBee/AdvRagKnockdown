@@ -841,8 +841,8 @@ function ENT:RemoveSelf(killOwner)
     local own = self:GetOwner()
     local rag = self:GetRagdoll()
     if IsValid(own) then
-        own:RemoveEffects(EF_BONEMERGE)
-        own:SetParent(nil)
+        --own:RemoveEffects(EF_BONEMERGE)
+        --own:SetParent(nil)
         --[[for _, c in ipairs(self:GetChildren()) do
             if not IsValid(c) then continue end
             c:SetMoveParent(own)
@@ -858,6 +858,11 @@ function ENT:RemoveSelf(killOwner)
     --self:Remove()
     SafeRemoveEntity(self)
 end
+
+-- lua_run PrintTable(hook.GetTable()["CreateEntityRagdoll"])
+local wlCERHooks = {
+    "DMS_Init",
+}
 
 function ENT:Initialize()
     local own = self:GetOwner()
@@ -959,7 +964,10 @@ function ENT:Initialize()
     --own:CaoWo("yesyes")
 
     if own:IsNPC() and getCV("npc_usehook_createentityragdoll", "Bool") then
-        hook.Run("CreateEntityRagdoll", own, rag, true)
+        local hooks = hook.GetTable().CreateEntityRagdoll
+        for _, id in ipairs(wlCERHooks) do
+            hooks[id](own, rag, true)
+        end
     end
     --rag:SetParent(nil)
     --rag:RemoveEffects(EF_BONEMERGE)
@@ -1175,11 +1183,13 @@ function ENT:Initialize()
     self.m_iOwnMoveType = own:GetMoveType()
     self.m_iOwnCollisionGroup = own:GetCollisionGroup()
     self.m_iOwnSolid = own:GetSolid()
+    self.m_entOwnLightOrigin = own:GetLightingOriginEntity()
     own:SetCollisionGroup(COLLISION_GROUP_IN_VEHICLE)
     own:SetMoveType(MOVETYPE_NONE)
     own:SetSolid(SOLID_NONE)
     own:AddEffects(EF_BONEMERGE)
     own:AddEffects(EF_BONEMERGE_FASTCULL)
+    own:SetLightingOriginEntity(rag)
     --own:SetNoDraw()
 
     local aimBlock = own:IsNPC() and aimBlackListedNPCClass[own:GetClass()]
@@ -1370,6 +1380,7 @@ function ENT:RestorePlayerData()
     own:SetMoveType(self.m_iOwnMoveType or MOVETYPE_STEP)
     own:SetCollisionGroup(self.m_iOwnCollisionGroup or COLLISION_GROUP_PLAYER)
     own:SetSolid(self.m_iOwnSolid or SOLID_OBB)
+    own:SetLightingOriginEntity(self.m_entOwnLightOrigin or NULL)
 
 end
 
@@ -1525,11 +1536,10 @@ function ENT:Think()
                 return own:GetPlayerColor()
             end
         end
+
         if rag.RenderOverride ~= self.CustomRagRenderOverride then
             rag.RenderOverride = self.CustomRagRenderOverride
         end
-
-        rag:SetFlexScale(own:GetFlexScale())
 
         return true 
     end
@@ -1594,7 +1604,7 @@ function ENT:Think()
             aim:Normalize()
             
             --aim.r = aea.r
-            --aim.y = own:GetIdealMoveYaw()
+            --aim.y = own:GetIdealYaw()
             --print(aim)
             self:SetAimEyeAngles(aim) --LerpAngle(0.5, aea, aim))
         else
@@ -1605,8 +1615,6 @@ function ENT:Think()
 
         --ListConditions(own)
         
-        --own:SetCondition(COND.CAN_RANGE_ATTACK1)
-        --own:SetCondition(COND.WEAPON_HAS_LOS)
         local ang = Angle(0, aea.y, 0)
         --own:SetLocalAngles(ang)
         --own:SetPos(rag:GetPos() - own:OBBCenter(), true)
@@ -1842,6 +1850,10 @@ function ENT:Think()
         self.m_iOwnSolid = own:GetSolid()
         own:SetSolid(SOLID_NONE)
     end
+    if own:GetLightingOriginEntity() ~= rag then
+        self.m_entOwnLightOrigin = own:GetLightingOriginEntity()
+        own:SetLightingOriginEntity(rag)
+    end
 
     if self.NextBroadcastNWEntity <= ct then
         self.NextBroadcastNWEntity = ct + 2
@@ -1936,11 +1948,11 @@ function ENT:Tick()
     -- 等等, upvalue超了?
     -- 你的性能上有僵尸, 你的性能上有僵尸(?)
 
-    local torsoang, torsoangdamp, torsospd, torsospddamp, torsodampfactor, torsodelta = 150, 150, 0, 0, 0.8, 0.2
+    local torsoang, torsoangdamp, torsospd, torsospddamp, torsodampfactor, torsodelta = 450, 150, 0, 0, 0.5, 0.2
     --local torsomovespd, torsomovespddamp, torsomovespddelta = 450, 450, 0.2
-    local headang, headangdamp, headspd, headspddamp, headdampfactor, headdelta = 50, 50, 0, 0, 1, 0.05
+    local headang, headangdamp, headspd, headspddamp, headdampfactor, headdelta = 70, 20, 0, 0, 0.4, 0.05
     local handang, handangdamp, handspd, handspddamp, handdampfactor, handdelta = 265, 265, 235, 235, 0.8, 0.2
-    local handaimang, handaimangdamp, handaimspd, handaimspddamp, handaimdampfactor, handaimdelta = 550, 550, 5, 0, 0.8, 0.05
+    local handaimang, handaimangdamp, handaimspd, handaimspddamp, handaimdampfactor, handaimdelta = 550, 150, 5, 0, 0.8, 0.05
     local armaimang, armaimangdamp, armaimspd, armaimspddamp, armaimdampfactor, armaimdelta = 150, 150, 0, 0, 0.5, 0.1
     local pelvisang, pelvisangdamp, pelvisspd, pelvisspddamp, pelvisdampfactor, pelvisdelta = 0, 10, 0, 0, 0.8, 0.15
     local legang, legangdamp, legspd, legspddamp, legsdampfactor, legsdelta = 35, 10, 0, 0, 0.8, 0.2
@@ -2009,7 +2021,7 @@ function ENT:Tick()
 
     --print(own, self:GetAimingWeapon())
 
-    local aimingWeapon = consc >= 35 and (not isPly or self:GetAimingWeapon())
+    local aimingWeapon = consc >= 35 and (not isPly and own:GetActivity() ~= ACT_IDLE or self:GetAimingWeapon())
 
     local pObjs = self.RagPObjs
     local shadowCtrls = {}
@@ -2549,7 +2561,7 @@ function ENT:Tick()
                 local nearwalling = self:GetCachedVar("NearWalling")
                 -- 歪打正着
                 local wepDelta = (aimPosDelta[wepHT] or twoArmAimDelta) * mdlScale
-                rhToLocalPos = eyepos + aea:Forward() * wepDelta.x * (1 - nearwalling) * (isPly and 1 or deltaedHT[wepHT] and 1 or 1.5) + aea:Right() * wepDelta.y * (isPly and 1 or wepDelta == twoArmAimDelta and 2 or 1) + aea:Up() * wepDelta.z * (isPly and 1 or 1)
+                rhToLocalPos = eyepos + aea:Forward() * wepDelta.x * (1 - nearwalling) * (isPly and 1 or deltaedHT[wepHT] and 1.2 or 1.5) + aea:Right() * wepDelta.y * (isPly and 1 or wepDelta == twoArmAimDelta and 2 or 1) + aea:Up() * wepDelta.z * (isPly and 1 or -6)
                 --rhToLocalPos = eyepos + aea:Forward() * wepDelta.x + aea:Right() * wepDelta.y + aea:Up() * wepDelta.z
             end
             --rhToLocalPos = rhToLocalPos + aea:Up() * 5
@@ -3328,27 +3340,11 @@ local shouldDrawVM
 
 local huge = math.huge
 function ENT:Draw(fl)
-    local own = self:GetOwner()
-    --local rag = self:GetRagdoll()
-    --if own ~= LocalPlayer():GetViewEntity() then
-        --own:SetNoDraw(true)
-    if (isfunction(self.CustomOwnerRenderOverride) and self.CustomOwnerRenderOverride == own.RenderOverride) then return end
-    
-    local old = own.RenderOverride
 
-    self.CustomOwnerRenderOverride = function(own, fl, ...)
-        if not IsValid(self) then
-            own.RenderOverride = old
-            return
-        end
-        --rag:RenderOverride(fl)
-    end
-    own.RenderOverride = self.CustomOwnerRenderOverride
-    --rag.RenderOverride = self.CustomRagRenderOverride
-    --rag:RenderOverride(fl)
-    --end
 end
 
+
+local mtx = Matrix()
 function ENT:CustomRagRenderOverride(fl)
     --do return end
     --if not shouldDrawVM then return end
@@ -3356,18 +3352,14 @@ function ENT:CustomRagRenderOverride(fl)
     local ctrl = Savee_AdvRagKnockdown_GetController(self)
     if not IsValid(ctrl) then return end
     local own = ctrl:GetOwner()
-    if not IsValid(own) or (self.Initialized and own:GetMoveParent() ~= self) then return end
-
     local ve = LocalPlayer():GetViewEntity()
+    if ve ~= own or not IsValid(own) or (self.Initialized and own:GetMoveParent() ~= self) then return end
 
     own:SetupBones()
+
     if own:IsPlayer() then
         hook.Run("PrePlayerDraw", own, fl)
     end
-
-    --own:SetupBones()
-    
-    local mtx = Matrix()
     
     local ragNoDrawBones = self.Savee_AdvRagKnockdown_NoDrawBones
     if not ragNoDrawBones then
@@ -3391,14 +3383,13 @@ function ENT:CustomRagRenderOverride(fl)
         return
     end
 
-    local stored = {}
-
+    --local stored = {}
     local nb = self:GetBoneCount()
 
     for i = 0, nb - 1 do
         local bName = self:GetBoneName(i)
         if bName == "__INVALIDBONE__" then continue end
-        stored[i] = self:GetBoneMatrix(i)
+        --stored[i] = self:GetBoneMatrix(i)
         own:CopyBoneMatrix(i, mtx)
         
         if ragNoDrawBones[i] and ve == own and (shouldDrawVM or bName == "ValveBiped.Bip01_Head1") then
@@ -3408,23 +3399,18 @@ function ENT:CustomRagRenderOverride(fl)
         own:SetBoneMatrix(i, mtx)
     end
 
-    for i = 0, self:GetFlexNum() - 1 do
-        self:SetFlexWeight(i, own:GetFlexWeight(i))
-    end
-
 
     self:DrawModel(fl)
-    self:CreateShadow()
-
     if own:IsPlayer() then
         hook.Run("PostPlayerDraw", own, fl)
     end
-    for i, mtx in pairs(stored) do
-        self:SetBoneMatrix(i, mtx)
-    end
 
-    
-    --self.Savee_AdvRagKnockdown_PendingBoneMatrix = {}
+    self:SetupBones()
+
+    --[[for i, mtx in pairs(stored) do
+        self:SetBoneMatrix(i, mtx)
+    end]]
+
 end
 
 

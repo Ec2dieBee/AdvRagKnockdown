@@ -1500,6 +1500,7 @@ if SERVER then
 
         local ctrl = getController(p)
         if not IsValid(ctrl) then return end
+        local rag = ctrl:GetRagdoll()
 
         local consc = ctrl:GetConsciousness()
 
@@ -1509,9 +1510,16 @@ if SERVER then
 
         local conscLerp = math.ease.OutQuint(consc / 100)
 
+        local refAng = oldAng
+
+        local eyeatt = rag:LookupAttachment("eyes")
+        if eyeatt ~= 0 then
+            refAng = rag:GetAttachment(eyeatt).Ang
+        end
+
         -- 在Z-City里吸氰化物吸的
-        oldAng:RotateAroundAxis(oldAng:Right(), -deltaAng.p * conscLerp)
-        oldAng:RotateAroundAxis(oldAng:Up(), -deltaAng.y * conscLerp)
+        oldAng:RotateAroundAxis(refAng:Right(), -deltaAng.p * conscLerp)
+        oldAng:RotateAroundAxis(refAng:Up(), -deltaAng.y * conscLerp)
 
         --newAng:Normalize()
         ctrl:SetAimEyeAngles(oldAng)
@@ -1643,11 +1651,6 @@ if SERVER then
         local rag = ctrl:GetRagdoll()
         local bone = rag:LookupBone("ValveBiped.Bip01_R_Hand")
 
-        local eyeatt = rag:LookupAttachment("eyes")
-        if not bone or eyeatt == 0 then return __undetoured(ply, raw, ...) end
-
-        local eyepos = rag:GetAttachment(eyeatt).Pos
-
         local handpos, handang = rag:GetBonePosition(bone)
         handpos, handang = LocalToWorld(handPosDelta, Angle(), handpos, handang)
 
@@ -1663,6 +1666,31 @@ if SERVER then
 
 
         return LerpVector(math.Clamp((ctrl:GetRArmDelta() - 0.03) * 10, 0, 1), av, handang:Forward())
+    
+    end)
+
+    funchooks.Add("Entity.BodyTarget", "Savee_AdvRagKnockdown_Sync", function(ply, vec, raw, ...)
+
+        local ctrl = getController(ply)
+        if not IsValid(ctrl) then return __undetoured(ply, vec, raw, ...) end
+        local rag = ctrl:GetRagdoll()
+        local bone = rag:LookupBone("ValveBiped.Bip01_Spine2")
+
+        local pos = rag:GetBonePosition(bone)
+
+        return pos
+    
+    end)
+    funchooks.Add("Entity.HeadTarget", "Savee_AdvRagKnockdown_Sync", function(ply, vec, raw, ...)
+
+        local ctrl = getController(ply)
+        if not IsValid(ctrl) then return __undetoured(ply, vec, raw, ...) end
+        local rag = ctrl:GetRagdoll()
+        local bone = rag:LookupBone("ValveBiped.Bip01_Head1")
+
+        local pos = rag:GetBonePosition(bone)
+
+        return pos
     
     end)
     --local ent = ents.Create("npc_combine_s")
@@ -2040,6 +2068,15 @@ else
     
     end)
 
+    -- EF_BONEMERGE特有的双绘制
+    SAVEE_ADVRAGKNOCKDOWN_DRAWINGOPAQUE = false
+    hook.Add("PreDrawOpaqueRenderables", "Savee_AdvRagKnockdown_FuckEF_BONEMERGE", function()
+        SAVEE_ADVRAGKNOCKDOWN_DRAWINGOPAQUE = true
+    end)
+    hook.Add("PreDrawTranslucentRenderables", "Savee_AdvRagKnockdown_FuckEF_BONEMERGE", function()
+        SAVEE_ADVRAGKNOCKDOWN_DRAWINGOPAQUE = false
+    end)
+
     --[[hook.Add("RenderScene", "Savee_AdvRagKnockdown_AltView", function(pos, ang, fov)
         local lp = LocalPlayer()
         if not IsValid(lp) or not cv_userenderview:GetBool() then return end
@@ -2148,6 +2185,26 @@ else
 
         return __undetoured(ply, i, pos, ang, ...)
     end)]]
+
+    local opaques = {
+        [RENDERGROUP_OPAQUE] = true,
+        [RENDERGROUP_OPAQUE_BRUSH] = true,
+        [RENDERGROUP_OPAQUE_HUGE] = true,
+        [RENDERGROUP_BOTH] = true,
+    }
+
+    funchooks.Add("Entity.DrawModel", "Savee_AdvRagKnockdown_SuspendInsufficientDraw", function(ent, fl, ...)
+        local own = ent
+        if ent:IsWeapon() then
+            own = ent:GetOwner()
+        end
+        if not IsValid(own) or not IsValid(getController(own)) then return __undetoured(ent, fl) end
+
+        local renderGroup = ent:GetRenderGroup()
+        if opaques[renderGroup] and not SAVEE_ADVRAGKNOCKDOWN_DRAWINGOPAQUE then return end
+
+        return __undetoured(ent, fl)
+    end)
 
     -- 兼容
 
