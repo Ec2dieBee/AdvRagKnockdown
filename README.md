@@ -13,3 +13,10 @@ NPCs Can Be knockdowned
 # Credits
 1. **Devs of Z-City** - **Main Inspiration** of this addon
 2. **Savee14702** - The dumb who tried write this all his own without using ANY of Z-City's code(seems I did that, wow)
+
+---
+# And also
+Commits may(mostly) contain Chinese since 2026/7/11 cuz my English is really bad
+All comments in the code are written in Chinese, if it looks like "English", maybe that's an internal meme(i.e. GMos = Garrys Mouse, which comes from(and created by) 9E2)
+
+This addon may be **abandoned** at **ANY TIME** due to my laziness lol

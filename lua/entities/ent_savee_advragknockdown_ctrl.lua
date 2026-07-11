@@ -902,7 +902,11 @@ function ENT:Initialize()
             return self:PreDrawPlayerHands(...)
 
         end)]]
-
+        local rag = self:GetRagdoll()
+        -- 绘制问题, 现在NPC应该不会在击倒的时候闪烁一下了
+        if IsValid(rag) then
+            own:SetParent(rag)
+        end
         timer.Simple(tickInterval, function()
             self.Initialized = true
         end)

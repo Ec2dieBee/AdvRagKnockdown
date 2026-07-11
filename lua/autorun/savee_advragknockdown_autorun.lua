@@ -1707,6 +1707,16 @@ if SERVER then
         return pos
     
     end)
+
+    funchooks.Add("NPC.Disposition", "Savee_AdvRagKnockdown_Sync", function(ply, ent, raw, ...)
+
+        local ctrl = getController(ent)
+        if raw or not IsValid(ctrl) or not ent:IsRagdoll() then return __undetoured(ply, ent, raw, ...) end
+        local own = ctrl:GetOwner()
+
+        return ply:Disposition(own)
+    
+    end)
     --local ent = ents.Create("npc_combine_s")
     --ent:Spawn()
     --doKnockdown(ent)
