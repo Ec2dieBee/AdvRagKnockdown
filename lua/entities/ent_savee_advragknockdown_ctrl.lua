@@ -850,10 +850,10 @@ function ENT:RemoveSelf(killOwner)
     local rag = self:GetRagdoll()
     if IsValid(own) then
         --own:RemoveEffects(EF_BONEMERGE)
-        --own:SetParent(nil)
+        own:SetParent(nil)
         --[[for _, c in ipairs(self:GetChildren()) do
             if not IsValid(c) then continue end
-            c:SetMoveParent(own)
+            c:SetParent(own)
         end]]
         if killOwner then
             if own:IsPlayer() then    
@@ -1027,8 +1027,8 @@ function ENT:Initialize()
         pObj:SetPos(pos)
         pObj:SetAngles(ang)
 
-        pObj:SetVelocity(ownVel)
         pObj:Wake()
+        pObj:SetVelocity(ownVel)
 
         local name = rag:GetBoneName(i)
         --pIDToName[pID] = name
@@ -1176,14 +1176,14 @@ function ENT:Initialize()
     --PrintTable(own:GetChildren())
     --childs[#childs + 1] = own:GetInternalVariable("m_hMoveChild")
     
-    -- 看起来是SetMoveParent太早导致的VPhysics.dll抽风(access violation exception)
+    -- 看起来是SetParent太早导致的VPhysics.dll抽风(access violation exception)
     -- 在sa_03测试了, 击杀3-4个盾兵并未发生崩溃情况(老方法会崩溃, 参见autorun.lua)
     -- 我就一会点GmosLua的苦逼高中生, C艹这些玩意交给高人解决吧(奈莉看完也4了.jpg)
     timer.Simple(tickInterval, function() 
-        if not IsValid(self) then return end
+        if not IsValid(self) or not IsValid(rag) then return end
         -- [ARC9] Modern Warfare 2019 飞刀支持
         modifyRagdoll(rag, pObjs)
-        own:SetMoveParent(rag)
+        own:SetParent(rag)
         own:SetLocalPos(vector_origin)
         self.Initialized = true
     end)
@@ -1200,7 +1200,7 @@ function ENT:Initialize()
     own:SetMoveType(MOVETYPE_NONE)
     own:SetSolid(SOLID_NONE)
     own:AddEffects(EF_BONEMERGE)
-    --own:AddEffects(EF_BONEMERGE_FASTCULL)
+    own:AddEffects(EF_BONEMERGE_FASTCULL)
     own:SetLightingOriginEntity(rag)
     --own:SetNoDraw()
 
@@ -1418,6 +1418,8 @@ function ENT:OnRemove()
     end]]
     --print("Removed")
 
+    self.Removing = true
+
     if CLIENT then return end
 
     local own = self:GetOwner()
@@ -1431,14 +1433,10 @@ function ENT:OnRemove()
             own:SetEyeAngles(aea, true)
         end
 
-        if own:GetMoveParent() == rag then
+        if own:GetParent() == rag then
             own:RemoveEffects(EF_BONEMERGE)
-            --own:RemoveEffects(EF_BONEMERGE_FASTCULL)
+            own:RemoveEffects(EF_BONEMERGE_FASTCULL)
             own:SetParent(nil)
-            -- DEBUG
-            --own:SetPos(self:GetRagdoll():GetPos())
-
-            --print(self, "布娃娃是我的父亲", own, rag)
         end
     end
     
@@ -1716,7 +1714,7 @@ function ENT:Think()
     local hit = groundTr.Hit
     --print(groundTr.Hit)
     local newOGS = 0
-    if hit then
+    if hit or rag:WaterLevel() >= 2 then
         newOGS = 1
     else
         if IsValid(self.LHand_Grabbing) then
@@ -1799,15 +1797,13 @@ function ENT:Think()
             --own:SetVelocity(Vector())
             --print(self, "我彻底起来了", own, rag)
 
-            own:SetParent(nil)
             rag:SetVelocity(Vector())
             self:SetVelocity(Vector())
             self:RemoveSelf()
-            own:SetPos(tr.HitPos, true)
             local faceAng = self.GettingUp_FaceAng
             timer.Simple(tickInterval, function()
                 if not IsValid(own) then return end
-                own:SetPos(tr.HitPos + Vector(0, 0 ,0.1), true)
+                own:SetPos(tr.HitPos + Vector(0, 0, 0.01))
                 own:SetAngles(faceAng)
                 own:SetLocalVelocity(Vector())
             end)
@@ -2817,7 +2813,7 @@ end
 -- 2026/7/5 这里被改为只处理真正和Tick有关的东西以试图优化
 function ENT:Tick()
 
-    if CLIENT then return end
+    if CLIENT or self.Removing then return end
 
     self.VarCaches = {}
 
@@ -2832,7 +2828,7 @@ function ENT:Tick()
     local rag = self:GetRagdoll()
     local mdlScale = rag.Savee_AdvRagKnockdown_ModelScale
 
-    if self.Initialized and own:GetMoveParent() ~= rag then
+    if self.Initialized and own:GetParent() ~= rag then
         self:RemoveSelf()
         return
     elseif not own:IsEffectActive(EF_BONEMERGE) then
@@ -2968,8 +2964,11 @@ function ENT:Tick()
     -- 抓握
     local torso = pObjs["ValveBiped.Bip01_Spine2"].pObj
 
-    local lhandpos, lhandang = getPhysBonePosAng(pObjs, "ValveBiped.Bip01_L_Hand")
-    local rhandpos, rhandang = getPhysBonePosAng(pObjs, "ValveBiped.Bip01_R_Hand")
+    local lHandName = self:LookupBone("ValveBiped.Bip01_L_Hand") and "ValveBiped.Bip01_L_Hand" or "ValveBiped.Bip01_L_Forearm"
+    local rHandName = self:LookupBone("ValveBiped.Bip01_R_Hand") and "ValveBiped.Bip01_R_Hand" or "ValveBiped.Bip01_R_Forearm"
+
+    local lhandpos, lhandang = getPhysBonePosAng(pObjs, lHandName)
+    local rhandpos, rhandang = getPhysBonePosAng(pObjs, rHandName)
 
     local grabtr = util.TraceLine({
         start = lhandpos,
@@ -3016,7 +3015,7 @@ function ENT:Tick()
             pObjID = 0
         end
 
-        self.LHand_Grabbing = constraint.Weld(rag, ent, pObjs["ValveBiped.Bip01_L_Hand"].id, pObjID, 10000, false, false)
+        self.LHand_Grabbing = constraint.Weld(rag, ent, pObjs[lHandName].id, pObjID, 10000, false, false)
         self.LHand_Grabbing_Broken = true
         --if not self.LHand_Grabbing then print("SMJB") end
         --self.LHand_Grabbing:SetKeyValue("forcelimit", 1)
@@ -3082,7 +3081,7 @@ function ENT:Tick()
             pObjID = 0
         end
 
-        self.RHand_Grabbing = constraint.Weld(rag, entR, pObjs["ValveBiped.Bip01_R_Hand"].id, pObjID, 10000, false, false)
+        self.RHand_Grabbing = constraint.Weld(rag, entR, pObjs[rHandName].id, pObjID, 10000, false, false)
         self.RHand_Grabbing_Broken = true
         --print(self.RHand_Grabbing)
         self.RHand_GrabbingWorld = checkCanPull(entR)
@@ -3265,7 +3264,23 @@ local noDrawBones = {
 local shouldDrawVM
 
 local huge = math.huge
+-- 怪, 必须草一遍Owner的RenderOverride才能让DrawModel被使用
 function ENT:Draw(fl)
+    
+    local own = self:GetOwner()
+    if not IsValid(own) or own.RenderOverride then return end
+
+    -- 和V1比起来这个东西的理论兼容性应该会更好
+    -- 因为如果涉及到RenderOverride想绘制owner是一定要DrawModel的
+    -- 这意味着根本没必要强制锁死RenderOverride
+    --local rag = self:GetRagdoll()
+    own.RenderOverride = function(_, ...)
+        if not IsValid(self) then
+            own.RenderOverride = nil
+        end
+
+        own:DrawModel(fl)
+    end
 
 end
 
@@ -3279,7 +3294,7 @@ function ENT:CustomRagRenderOverride(fl)
     if not IsValid(ctrl) then return end
     local own = ctrl:GetOwner()
     local ve = LocalPlayer():GetViewEntity()
-    if ve ~= own or not IsValid(own) or (self.Initialized and own:GetMoveParent() ~= self) then return end
+    if ve ~= own or not IsValid(own) or (self.Initialized and own:GetParent() ~= self) then return end
 
     own:SetupBones()
 
@@ -3466,7 +3481,7 @@ function ENT:CalcView(ply, pos, ang, fov)
 
     self.EyeAng = ang
     self.EyeFOV = fov
-    self.LastEyeAng = LerpAngle(math.min(1, isSP and 1 or FrameTime() * 25), self.LastEyeAng or ang, ang)
+    self.LastEyeAng = LerpAngle(math.min(1, FrameTime() * 65), self.LastEyeAng or self:GetAimEyeAngles(), ang)
 
     shouldDrawVM = not noArm and self:GetAimingWeapon()
     --ply:SetViewPunchAngles(Angle())
@@ -3477,7 +3492,7 @@ function ENT:CalcView(ply, pos, ang, fov)
     --print("HYW")
     local view = {
         origin = pos,
-        angles = ang,
+        angles = self.LastEyeAng,
         fov = fov,
         drawviewer = not shouldDrawVM,
     }

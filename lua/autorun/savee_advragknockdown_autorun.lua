@@ -431,7 +431,7 @@ funchooks.Add("NPC.GetShootPos", "Savee_AdvRagKnockdown_Sync", function(ply, ...
     local ctrl = getController(ply)
     if not IsValid(ctrl) then return __undetoured(ply, ...) end
     local rag = ctrl:GetRagdoll()
-    local mtx = rag:GetBoneMatrix(rag:LookupBone("ValveBiped.Bip01_R_Hand"))
+    local mtx = rag:GetBoneMatrix(rag:LookupBone("ValveBiped.Bip01_R_Hand") or rag:LookupBone("ValveBiped.Bip01_R_Forearm"))
     local pos, ang = mtx:GetTranslation(), mtx:GetAngles()
 
     local newpos, newang = LocalToWorld(handPosDelta, Angle(), pos, ang)
@@ -1424,7 +1424,7 @@ if SERVER then
             return
         end
     
-        if not ent:LookupBone("ValveBiped.Bip01_L_Hand") or not ent:LookupBone("ValveBiped.Bip01_R_Hand") then return end 
+        --if not ent:LookupBone("ValveBiped.Bip01_L_Hand") or not ent:LookupBone("ValveBiped.Bip01_R_Hand") then return end 
         --if not then return end
         local mdl = ent:GetModel()
         if blMdlCache[mdl] then 
@@ -2219,15 +2219,19 @@ else
 
     funchooks.Add("Entity.DrawModel", "Savee_AdvRagKnockdown_SuspendInsufficientDraw", function(ent, fl, ...)
         local own = ent
+        
         if ent:IsWeapon() then
             own = ent:GetOwner()
         end
-        if not IsValid(own) or not IsValid(getController(own)) then return __undetoured(ent, fl) end
+
+        local ctrl = getController(own)
+        if not IsValid(own) or not IsValid(ctrl) then return __undetoured(ent, fl, ...) end
 
         local renderGroup = ent:GetRenderGroup()
         if opaques[renderGroup] and not SAVEE_ADVRAGKNOCKDOWN_DRAWINGOPAQUE then return end
+        if not opaques[renderGroup] and renderGroup ~= RENDERGROUP_BOTH and SAVEE_ADVRAGKNOCKDOWN_DRAWINGOPAQUE then return end
 
-        return __undetoured(ent, fl)
+        return __undetoured(ent, fl, ...)
     end)
 
     -- 兼容
