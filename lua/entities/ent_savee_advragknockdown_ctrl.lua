@@ -421,15 +421,14 @@ end
 -- 基于三角函数/余弦定理(极向还没想好但是2骨足够了)
 -- 这个故事告诉我们高中知识还是有用的
 
-local function calcBasicArmIK(armPos, armAng, handPos, mdlScale, pole, rotateAng, wtl)
-    mdlScale = mdlScale or 1
+local function calcBasicArmIK(armPos, handPos, pole, rotateAng, wtl)
     -- 理论上是个位置
     pole = pole or 0
     rotateAng = rotateAng or Angle(0, 0, 0)
 
     -- 事实上我的数学是一坨史, 但是这些玩意书上都有.jpg
     local c = handPos:DistToSqr(armPos)
-    local a, b = 11.69 * mdlScale, 11.48 * mdlScale
+    local a, b = 11.69, 11.48 
     --print(a, b, c)
     --print((c ^ 2 + a ^ 2 - b ^ 2) / (2 * c * a))
     local cos1, cos2 = (c + a ^ 2 - b ^ 2) / (2 * (c ^ 0.5) * a), (a ^ 2 + b ^ 2 - c) / (2 * a * b)
@@ -505,7 +504,7 @@ ENT.NextSetRArmDelta = -1
 ENT.CanSetLArmDelta = true
 ENT.CanSetRArmDelta = true
 
-ENT.CustomOwnerRenderOverride = nil
+--ENT.CustomOwnerRenderOverride = nil
 
 ENT.RagPhysDmgTakenCount = 0
 
@@ -569,8 +568,12 @@ ENT.AnimationTable = {
             -- {startCycle, EndCycle}
             Recover = {0.1, 0.9},
             Recover_Duck = {0.4, 0.5},
-             --pitchmin, pitchmax, 翻转
-            Pitch = {-90, 90, true}
+            -- pitchmin, pitchmax, 翻转
+            Pitch = {-90, 90, true},
+            -- 在站着的位置(盆骨距离地面45hu)的Cycle
+            GetUp_Stand = 0.7,
+            -- 在蹲着的位置(盆骨距离地面25hu)的Cycle
+            GetUp_Duck = 0.3,
         },]]
         {
             Model = "models/Zombie/Classic.mdl",
@@ -582,7 +585,9 @@ ENT.AnimationTable = {
             Recover = {0.8, 0.9},
             Recover_Duck = {0.4, 0.5},
             --pitchmin, pitchmax, 翻转
-            Pitch = {-90, 90, true}
+            Pitch = {-90, 90, true},
+            GetUp_Stand = 0.8,
+            GetUp_Duck = 0.6,
         },
         {
             Model = "models/Zombie/Classic.mdl",
@@ -594,7 +599,9 @@ ENT.AnimationTable = {
             -- {startCycle, EndCycle}
             Recover = {0.8, 0.9},
             Recover_Duck = {0.4, 0.5},
-            Pitch = {-90, 90}
+            Pitch = {-90, 90},
+            GetUp_Stand = 0.8,
+            GetUp_Duck = 0.6,
         },
         --[[{
             Model = "models/Zombie/Classic.mdl",
@@ -906,6 +913,7 @@ function ENT:Initialize()
         -- 绘制问题, 现在NPC应该不会在击倒的时候闪烁一下了
         if IsValid(rag) then
             own:SetParent(rag)
+            self:SetRenderBounds(rag:GetRenderBounds())
         end
         timer.Simple(tickInterval, function()
             self.Initialized = true
@@ -1200,7 +1208,7 @@ function ENT:Initialize()
     own:SetMoveType(MOVETYPE_NONE)
     own:SetSolid(SOLID_NONE)
     own:AddEffects(EF_BONEMERGE)
-    own:AddEffects(EF_BONEMERGE_FASTCULL)
+    --own:AddEffects(EF_BONEMERGE_FASTCULL)
     own:SetLightingOriginEntity(rag)
     --own:SetNoDraw()
 
@@ -1317,6 +1325,8 @@ function ENT:TryGetUp(animTbl, forced)
     local own = self:GetOwner()
     local rag = self:GetRagdoll()
 
+    local mdlScale = rag.Savee_AdvRagKnockdown_ModelScale
+
     local pos = rag:GetBonePosition(0)
     local pos2 = rag:GetBonePosition(rag:LookupBone("ValveBiped.Bip01_Spine2") or 0)
 
@@ -1339,10 +1349,14 @@ function ENT:TryGetUp(animTbl, forced)
 
     local hull = (own:OBBMaxs() - own:OBBMins()) / 2
     hull.z = 1
+
+    local heightTr = util.TraceLine({start = pos + Vector(0, 0, 5), endpos = pos - Vector(0, 0, 64 * mdlScale), filter = {self, own}, mask = MASK_ALL})
+    local heightLerp = ((pos2.z + pos.z) / 2 - heightTr.HitPos.z) / (32 * mdlScale) - 0.1
+    --print(heightLerp)
     
     local tr = util.TraceHull({
-        start = rag:GetPos() + Vector(0, 0, 35), 
-        endpos = rag:GetPos() - Vector(0, 0, 15),
+        start = rag:GetPos() + Vector(0, 0, 5), 
+        endpos = rag:GetPos() - Vector(0, 0, 64),
         filter = {rag, own},
         mins = -hull,
         maxs = hull,
@@ -1353,7 +1367,17 @@ function ENT:TryGetUp(animTbl, forced)
     anim:SetModel(animTbl.Model) 
     anim:SetSequence(animTbl.Sequence)
     anim:SetPlaybackRate(1)
-    anim:SetCycle(animTbl.StartCycle or 0)
+
+    local cycle = animTbl.StartCycle or 0
+
+    local crouch, stand = animTbl.GetUp_Duck or 0.3, animTbl.GetUp_Stand or 0.7
+    if heightLerp > 0.5 then
+        cycle = Lerp((heightLerp - 0.5) / 0.5, crouch, stand)
+    else
+        cycle = Lerp(heightLerp / 0.5, cycle, crouch)
+    end
+
+    anim:SetCycle(cycle)
     --if IsValid(tr.Entity) then anim:SetParent(tr.Entity) end
     self.CurGetUpAnimData = animTbl
 
@@ -1377,7 +1401,7 @@ function ENT:ShouldGetUp()
         if dist > 25 then return false end
     else
         local pos = rag:GetBonePosition(0)
-        local tr = util.TraceLine({start = pos + Vector(0, 0, 5), endpos = pos - Vector(0, 0, 10), filter = {self, own}, mask = MASK_ALL})
+        local tr = util.TraceLine({start = pos + Vector(0, 0, 5), endpos = pos - Vector(0, 0, 64 * rag.Savee_AdvRagKnockdown_ModelScale), filter = {self, own}, mask = MASK_ALL})
         return tr.Hit
     end
 
@@ -1390,8 +1414,8 @@ function ENT:RestorePlayerData()
     if not IsValid(own) then return end
 
     --own:RemoveFlags(FL_DUCKING)
-
-    own:SetViewOffset(self.m_vOwnViewOffset)
+    local offset = self.m_vOwnViewOffset
+    own:SetViewOffset(offset)
     if own:IsPlayer() then own:SetCurrentViewOffset(self.m_vOwnViewOffset) end
     
     own:SetMoveType(self.m_iOwnMoveType or MOVETYPE_STEP)
@@ -1419,14 +1443,15 @@ function ENT:OnRemove()
     --print("Removed")
 
     self.Removing = true
-
-    if CLIENT then return end
+    local rag = self:GetRagdoll()
+    
+    if CLIENT then 
+        return
+    end
 
     local own = self:GetOwner()
-    local rag = self:GetRagdoll()
     --print(rag)
     if IsValid(own) then
-        self:RestorePlayerData()
         if own:IsPlayer() then
             local aea = self:GetAimEyeAngles()
             aea.r = 0
@@ -1435,9 +1460,19 @@ function ENT:OnRemove()
 
         if own:GetParent() == rag then
             own:RemoveEffects(EF_BONEMERGE)
-            own:RemoveEffects(EF_BONEMERGE_FASTCULL)
+            --own:RemoveEffects(EF_BONEMERGE_FASTCULL)
             own:SetParent(nil)
         end
+
+        self:RestorePlayerData()
+        local newPos = self.GettingUp_NewOwnerPos
+
+        -- 年度最傻逼问题, 神他妈必须在移除的时候设置才给弄
+        if newPos then
+            own:SetPos(newPos)
+            own:SetLocalVelocity(vector_origin)
+        end
+
     end
     
     if IsValid(rag) then
@@ -1529,6 +1564,9 @@ end
 local bound = Vector(3, 3, 3)
 
 function ENT:Think()
+
+    if self.Removing then return end
+
     local ct = CurTime()
 
     local own = self:GetOwner()
@@ -1724,7 +1762,7 @@ function ENT:Think()
             newOGS = newOGS + 0.3
         end
     end
-    self.OnGroundState = math.Approach(self.OnGroundState, newOGS, hit and 0.25 or 0.35)
+    self.OnGroundState = math.Approach(self.OnGroundState, newOGS, hit and 0.25 or 0.1)
 
     local flOnGround = self:IsFlagSet(FL_ONGROUND)
 
@@ -1789,7 +1827,8 @@ function ENT:Think()
             local tr = util.TraceEntityHull({
                 start = pelvisPos + Vector(0, 0, 2),
                 endpos = pelvisPos - Vector(0, 0, 100),
-                filter = {rag, own},
+                filter = {self, rag, own},
+                mask = MASK_SHOT_HULL,
             }, own)
 
             --print(tr.Entity)
@@ -1799,14 +1838,9 @@ function ENT:Think()
 
             rag:SetVelocity(Vector())
             self:SetVelocity(Vector())
+            
+            self.GettingUp_NewOwnerPos = tr.HitPos + Vector(0, 0, 0.01)
             self:RemoveSelf()
-            local faceAng = self.GettingUp_FaceAng
-            timer.Simple(tickInterval, function()
-                if not IsValid(own) then return end
-                own:SetPos(tr.HitPos + Vector(0, 0, 0.01))
-                own:SetAngles(faceAng)
-                own:SetLocalVelocity(Vector())
-            end)
             return
         elseif cyc >= animData.Recover[1] and self:GetParent() == rag then
 
@@ -1943,12 +1977,12 @@ end
 
 -- 这样你就不必来来回回
 
-local torsoang, torsoangdamp, torsospd, torsospddamp, torsodampfactor, torsodelta = 450, 250, 0, 0, 0.8, 0.1
+local torsoang, torsoangdamp, torsospd, torsospddamp, torsodampfactor, torsodelta = 650, 450, 0, 0, 0.2, 0.1
 --local torsomovespd, torsomovespddamp, torsomovespddelta = 450, 450, 0.2
-local headang, headangdamp, headspd, headspddamp, headdampfactor, headdelta = 80, 50, 0, 0, 0.8, 0.05
+local headang, headangdamp, headspd, headspddamp, headdampfactor, headdelta = 220, 200, 0, 0, 0.5, 0.01
 local handang, handangdamp, handspd, handspddamp, handdampfactor, handdelta = 265, 265, 635, 235, 0.8, 0.2
 local handaimang, handaimangdamp, handaimspd, handaimspddamp, handaimdampfactor, handaimdelta = 250, 150, 5, 0, 0.8, 0.05
-local armaimang, armaimangdamp, armaimspd, armaimspddamp, armaimdampfactor, armaimdelta = 250, 150, 0, 0, 0.5, 0.1
+local armaimang, armaimangdamp, armaimspd, armaimspddamp, armaimdampfactor, armaimdelta = 450, 250, 0, 0, 0.5, 0.1
 local pelvisang, pelvisangdamp, pelvisspd, pelvisspddamp, pelvisdampfactor, pelvisdelta = 0, 10, 0, 0, 0.8, 0.15
 local legang, legangdamp, legspd, legspddamp, legsdampfactor, legsdelta = 25, 5, 0, 0, 0.2, 0.2
 
@@ -2416,8 +2450,10 @@ function ENT:DealWithAnims(isPly, aimingWeapon, noArm, wepHT, isMeleeHT)
             local nearwalling = self:GetCachedVar("NearWalling")
             if not isMeleeHT then
                 -- 歪打正着
-                local wepDelta = (aimPosDelta[wepHT] or twoArmAimDelta) * mdlScale
-                rhToLocalPos = eyepos + aea:Forward() * wepDelta.x * (1 - nearwalling) * (isPly and 1 or deltaedHT[wepHT] and 1.2 or 1.5) + aea:Right() * wepDelta.y * (isPly and 1 or wepDelta == twoArmAimDelta and 2 or 1) + aea:Up() * wepDelta.z * (isPly and 1 or 1)
+                local wepDelta = (aimPosDelta[wepHT] or twoArmAimDelta)
+                local delta = aea:Forward() * wepDelta.x * (1 - nearwalling) * (isPly and 1 or deltaedHT[wepHT] and 1.2 or 1.5) + aea:Right() * wepDelta.y * (isPly and 1 or wepDelta == twoArmAimDelta and 2 or 1) + aea:Up() * wepDelta.z * (isPly and 1 or 1)
+                delta = delta * mdlScale
+                rhToLocalPos = eyepos + delta
                 --rhToLocalPos = eyepos + aea:Forward() * wepDelta.x + aea:Right() * wepDelta.y + aea:Up() * wepDelta.z
             end
             --rhToLocalPos = rhToLocalPos + aea:Up() * 5
@@ -2435,8 +2471,8 @@ function ENT:DealWithAnims(isPly, aimingWeapon, noArm, wepHT, isMeleeHT)
             local var = 50 - 25 * nearwalling
 
             -- speeddamp是他妈一坨屎, 这就是为什么我们要做100%橙汁(?????)啊不对角度运算
-            local angLUpperArm, angLForeArm = calcBasicArmIK(ragLUArmPos, ragLUArmAng, lhToLocalPos, mdlScale, var + exRotate, Angle(0, 0, -90), aea)
-            local angRUpperArm, angRForeArm = calcBasicArmIK(ragRUArmPos, ragRUArmAng, rhToLocalPos, mdlScale, -var + exRotate, Angle(0, 0, -90), aea)
+            local angLUpperArm, angLForeArm = calcBasicArmIK(ragLUArmPos, lhToLocalPos, var + exRotate, Angle(0, 0, -90), aea)
+            local angRUpperArm, angRForeArm = calcBasicArmIK(ragRUArmPos, rhToLocalPos, -var + exRotate, Angle(0, 0, -90), aea)
 
             shadowCtrls["ValveBiped.Bip01_L_UpperArm"] = {
                 --secondstoarrive = tickInterval / 10,
@@ -2922,12 +2958,12 @@ function ENT:Tick()
                 --secondstoarrive = 0.01,
                 pos = pos,
                 angle = ang,
-                maxspeed = 350 * getupForceMul,
-                maxspeeddamp = 350 * getupForceMul,
-                maxangular = 250,
-                maxangulardamp = 350,
+                maxspeed = 30 * getupForceMul,
+                maxspeeddamp = 15 * getupForceMul,
+                maxangular = 350,
+                maxangulardamp = 1350,
                 dampfactor = Lerp((self.GetupAnimModel:GetCycle() - 0.3) / 0.7, 0.2, 0.5),
-                delta = 0.2,
+                delta = self.GettingUp_SyncingToOwner and 0.02 or 0.2,
                 DontFuckMe = true,
                 --addMass = getupUseMass,
             }
@@ -3262,25 +3298,43 @@ local noDrawBones = {
 
 -- 这玩意就在客户端(也就是你)有
 local shouldDrawVM
+local shouldDrawRagdoll
 
 local huge = math.huge
 -- 怪, 必须草一遍Owner的RenderOverride才能让DrawModel被使用
 function ENT:Draw(fl)
-    
     local own = self:GetOwner()
+    local rag = self:GetRagdoll()
+
+    -- 主观题(6分)
+    -- 默认情况下 1tick约合0.0033s 那你猜猜这段时间里游戏渲染了几帧?(1分) 人脑能否反应这些瞬间闪烁的东西?(5分)
+
+    -- 很怪, 只有这样才能防止它在移除后继续绘制
+    shouldDrawRagdoll = true
+    rag:DrawModel(fl)
+    shouldDrawRagdoll = false
+
+    --print(own.RenderOverride)
     if not IsValid(own) or own.RenderOverride then return end
 
     -- 和V1比起来这个东西的理论兼容性应该会更好
     -- 因为如果涉及到RenderOverride想绘制owner是一定要DrawModel的
     -- 这意味着根本没必要强制锁死RenderOverride
-    --local rag = self:GetRagdoll()
-    own.RenderOverride = function(_, ...)
-        if not IsValid(self) then
-            own.RenderOverride = nil
-        end
 
-        own:DrawModel(fl)
-    end
+    -- 不知道为什么 需要设置两次
+    -- 这个可以满足这个需求
+    timer.Simple(0, function()
+        if not IsValid(own) then return end
+        own.RenderOverride = function(_, ...)
+            if not IsValid(self) then
+                own.RenderOverride = nil
+                return
+            end
+
+            own:DrawModel(fl)
+
+        end
+    end)
 
 end
 
@@ -3288,8 +3342,9 @@ end
 local mtx = Matrix()
 function ENT:CustomRagRenderOverride(fl)
     --do return end
+    if not shouldDrawRagdoll then return end
     --if not shouldDrawVM then return end
-
+    
     local ctrl = Savee_AdvRagKnockdown_GetController(self)
     if not IsValid(ctrl) then return end
     local own = ctrl:GetOwner()
@@ -3584,6 +3639,10 @@ function ENT:CalcViewModelView(wep, vm, oldPos, oldAng, pos, ang)
 
 end
 
+local cachedHandModel = ""
+local cachedHandData = {}
+local cachedHandBoneWhitelist = {}
+
 -- 你会想要把SVMAL的系统搬过来
 -- 出于对双枪的兼容性(不, 实际上不兼容)
 function ENT:PreDrawPlayerHands(hands, vm, ply, wep)
@@ -3594,10 +3653,10 @@ function ENT:PreDrawPlayerHands(hands, vm, ply, wep)
 
     if not IsValid(ply) or self:GetOwner() ~= ply or (IsValid(ply:GetViewEntity()) and ply:GetViewEntity() ~= ply) then return end
 
-
     --print(hands)
     
     local rag = self:GetRagdoll()
+    local mdl = hands:GetModel()
 
     local lArmDelta = self:GetLArmDelta()
     self.LastLArmDelta = Lerp(FrameTime() * 20, self.LastLArmDelta or lArmDelta, lArmDelta)
@@ -3605,15 +3664,60 @@ function ENT:PreDrawPlayerHands(hands, vm, ply, wep)
 
     hands:SetupBones()
 
+    -- FROM SVMAL
+    -- 是的我抄我自己
+    if cachedHandModel ~= mdl then
+        local ref = ClientsideModel(mdl)
+        ref:SetupBones()
+        for bone = 0, hands:GetBoneCount() - 1 do
+
+            if boneHasParent(ref, bone, ref:LookupBone("ValveBiped.Bip01_L_UpperArm") or ref:LookupBone("ValveBiped.Bip01_L_Forearm")) then
+                cachedHandBoneWhitelist[bone] = true
+            else continue end
+
+            local parent = ref:GetBoneParent(bone)
+            ref:CopyBoneMatrix(parent, mtx)
+            
+            if not mtx then continue end
+            local pPos, pAng = mtx:GetTranslation(), mtx:GetAngles()
+
+            ref:CopyBoneMatrix(bone, mtx)
+            local cPos, cAng = mtx:GetTranslation(), mtx:GetAngles()
+            cPos, cAng = WorldToLocal(cPos, cAng, pPos, pAng)
+
+            cachedHandData[bone] = {cPos, cAng}
+            
+        end
+        ref:Remove()
+        cachedHandModel = mdl
+    end
+
     local mtx = Matrix()
     for bone = 0, hands:GetBoneCount() - 1 do
         local name = hands:GetBoneName(bone)
 
-        if not string.StartsWith(name, "ValveBiped.Bip01_L_") then continue end
+        --print(name)
+        if not cachedHandBoneWhitelist[bone] then continue end
 
         local bone2 = rag:LookupBone(name)
         -- 抽象, 理论上它们都应存在
-        if not bone or not bone2 then continue end
+        if not bone2 then
+            local parent = hands:GetBoneParent(bone)
+            local data = cachedHandData[parent]
+
+            if not data then return end
+
+            hands:CopyBoneMatrix(parent, mtx)
+			local lPos,lAng = LocalToWorld(data[1], data[2], mtx:GetTranslation(), mtx:GetAngles())
+        
+            hands:CopyBoneMatrix(bone, mtx)
+            local oldPos, oldAng = mtx:GetTranslation(), mtx:GetAngles()
+            mtx:SetTranslation(LerpVector(lArmDelta, oldPos, lPos))
+            mtx:SetAngles(LerpAngle(lArmDelta, oldAng, lAng))
+            
+            hands:SetBoneMatrix(bone, mtx)
+            continue
+        end
 
         rag:CopyBoneMatrix(bone2, mtx)
         local pos, ang = mtx:GetTranslation(), mtx:GetAngles()
