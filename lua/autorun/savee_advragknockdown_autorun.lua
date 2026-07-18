@@ -120,7 +120,7 @@ end
 local function getController(ent)
     if not cv_kd_enabled:GetBool() or not IsValid(ent) then return end
     local ctrl = CLIENT and ent:GetNW2Entity("Savee_AdvRagKnockdown_Controller") or ent.Savee_AdvRagKnockdown_Controller
-    if not IsValid(ctrl) or not ctrl.GetRagdoll then return end
+    if not IsValid(ctrl) or ctrl.Removing or not ctrl.GetRagdoll then return end
     local rag = ctrl:GetRagdoll()
     if not IsValid(rag) or rag:IsMarkedForDeletion() then return end
     return ctrl
@@ -518,7 +518,6 @@ end)
 
 local lastSysTime_EyeAngles = -1
 
-
 funchooks.Add("Entity.EyeAngles", "Savee_AdvRagKnockdown_Sync", function(ply, raw, ...)
 
     --do return __undetoured(ply, ...) end
@@ -533,18 +532,21 @@ funchooks.Add("Entity.EyeAngles", "Savee_AdvRagKnockdown_Sync", function(ply, ra
     if not IsValid(ctrl) or not ctrl.GetAimEyeAngles then return __undetoured(ply, raw, ...) end
 
     --print(sysTime - lastSysTime_EyeAngles)
-    --[[if lastSysTime_EyeAngles >= sysTime and ctrl.VarCaches["EyeAng"] then 
-        --print("DoReturnend")
-        return ctrl.VarCaches["EyeAng"] 
-    end]]
-    --lastSysTime_EyeAngles = sysTime + FrameTime() * 0.01
+    local cache = ctrl.VarCaches["EyeAng"]
+    if lastSysTime_EyeAngles >= sysTime and cache then 
+        return cache
+    end
+
+
+    lastSysTime_EyeAngles = sysTime + tickInterval * 0.05
 
     local ea = ctrl:GetAimEyeAngles()
     ea.z = 0
     ea:Normalize()
 
     local final = SERVER and ea or LerpAngle(FrameTime(), ctrl.LastEyeAng or ea, ea)
-    --ctrl.VarCaches["EyeAng"] = final
+    --print(final)
+    ctrl.VarCaches["EyeAng"] = final
 
     return final
    
@@ -562,7 +564,7 @@ funchooks.Add("Player.SetEyeAngles", "Savee_AdvRagKnockdown_Sync", function(ply,
     ang.r = ctrl:GetAimEyeAngles().r
     --print(1)
     ctrl:SetAimEyeAngles(ang)
-    ctrl.VarCaches["EyeAng"] = ang
+    --ctrl.VarCaches["EyeAng"] = ang
 
     return __undetoured(ply, ang, raw, ...)
    

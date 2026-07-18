@@ -856,12 +856,6 @@ function ENT:RemoveSelf(killOwner)
     local own = self:GetOwner()
     local rag = self:GetRagdoll()
     if IsValid(own) then
-        --own:RemoveEffects(EF_BONEMERGE)
-        own:SetParent(nil)
-        --[[for _, c in ipairs(self:GetChildren()) do
-            if not IsValid(c) then continue end
-            c:SetParent(own)
-        end]]
         if killOwner then
             if own:IsPlayer() then    
                 own:Kill()
@@ -993,8 +987,9 @@ function ENT:Initialize()
     --rag:RemoveEffects(EF_BONEMERGE)
     rag:AddEffects(EFL_DONTBLOCKLOS)
     rag:AddFlags(FL_NOTARGET)
+    rag:AddFlags(FL_AIMTARGET)
     rag:AddFlags(FL_NPC)
-    --rag:RemoveFlags(FL_OBJECT)
+    rag:RemoveFlags(FL_OBJECT)
     rag:SetCollisionGroup(own:IsPlayer() and COLLISION_GROUP_PLAYER or COLLISION_GROUP_DEBRIS_TRIGGER)
 
     --modifyRagdoll(rag)
@@ -1192,7 +1187,6 @@ function ENT:Initialize()
         -- [ARC9] Modern Warfare 2019 飞刀支持
         modifyRagdoll(rag, pObjs)
         own:SetParent(rag)
-        own:SetLocalPos(vector_origin)
         self.Initialized = true
     end)
 
@@ -1203,13 +1197,16 @@ function ENT:Initialize()
     self.m_iOwnMoveType = own:GetMoveType()
     self.m_iOwnCollisionGroup = own:GetCollisionGroup()
     self.m_iOwnSolid = own:GetSolid()
-    self.m_entOwnLightOrigin = own:GetLightingOriginEntity()
-    own:SetCollisionGroup(COLLISION_GROUP_DEBRIS_TRIGGER)
+    --self.m_entOwnLightOrigin = own:GetLightingOriginEntity()
+
     own:SetMoveType(MOVETYPE_NONE)
+    own:SetCollisionGroup(COLLISION_GROUP_IN_VEHICLE)
     own:SetSolid(SOLID_NONE)
+    --own:SetLightingOriginEntity(rag)
+
+
     own:AddEffects(EF_BONEMERGE)
     --own:AddEffects(EF_BONEMERGE_FASTCULL)
-    own:SetLightingOriginEntity(rag)
     --own:SetNoDraw()
 
     local aimBlock = own:IsNPC() and aimBlackListedNPCClass[own:GetClass()]
@@ -1350,8 +1347,8 @@ function ENT:TryGetUp(animTbl, forced)
     local hull = (own:OBBMaxs() - own:OBBMins()) / 2
     hull.z = 1
 
-    local heightTr = util.TraceLine({start = pos + Vector(0, 0, 5), endpos = pos - Vector(0, 0, 64 * mdlScale), filter = {self, own}, mask = MASK_ALL})
-    local heightLerp = ((pos2.z + pos.z) / 2 - heightTr.HitPos.z) / (32 * mdlScale) - 0.1
+    local heightTr = util.TraceLine({start = pos + Vector(0, 0, 5), endpos = pos - Vector(0, 0, 64 * mdlScale), filter = {self, own, rag}, mask = MASK_ALL})
+    local heightLerp = ((pos2.z + pos.z) / 2 - heightTr.HitPos.z) / (24 * mdlScale) - 0.1
     --print(heightLerp)
     
     local tr = util.TraceHull({
@@ -1459,9 +1456,9 @@ function ENT:OnRemove()
         end
 
         if own:GetParent() == rag then
+            own:SetParent(nil)
             own:RemoveEffects(EF_BONEMERGE)
             --own:RemoveEffects(EF_BONEMERGE_FASTCULL)
-            own:SetParent(nil)
         end
 
         self:RestorePlayerData()
@@ -1838,9 +1835,15 @@ function ENT:Think()
 
             rag:SetVelocity(Vector())
             self:SetVelocity(Vector())
-            
-            self.GettingUp_NewOwnerPos = tr.HitPos + Vector(0, 0, 0.01)
+            local pos = tr.HitPos + Vector(0, 0, 0.01)
+
+            self.GettingUp_NewOwnerPos = pos
             self:RemoveSelf()
+            own:SetPos(pos, true)
+            timer.Simple(0, function()
+                if not IsValid(own) then return end
+                own:SetPos(pos, true)
+            end)
             return
         elseif cyc >= animData.Recover[1] and self:GetParent() == rag then
 
@@ -2959,7 +2962,7 @@ function ENT:Tick()
                 pos = pos,
                 angle = ang,
                 maxspeed = 30 * getupForceMul,
-                maxspeeddamp = 15 * getupForceMul,
+                maxspeeddamp = 15 * getupForceMul * (self.GettingUp_SyncingToOwner and 3 or 1),
                 maxangular = 350,
                 maxangulardamp = 1350,
                 dampfactor = Lerp((self.GetupAnimModel:GetCycle() - 0.3) / 0.7, 0.2, 0.5),
