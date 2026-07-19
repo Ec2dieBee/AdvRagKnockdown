@@ -20,6 +20,7 @@
 ---警告! 这并不意味着你可以躲在电视后面听The Great Punishment然后拿霰弹枪射击**某个很大的猫科生物**
 -- Done: 引入类似Z-City的健康系统, (意识(能否控制武器/控制力), 体力(最大控制力), 我猜这两个够用了(坐等其他人搬运Z-City健康系统.jpg))
 -- ToDo: 让Miku可以舒适的射击
+-- ToDo: 加个切换伸手的可选项(CL/SV)
 
 local isSP = game.SinglePlayer()
 
@@ -2918,7 +2919,7 @@ function ENT:Tick()
         --eyepos = eyepos - own:GetInternalVariable("m_HackedGunPos") or vector_origin
         own:SetPos(rag:GetPos(), true)
     else
-        own:SetPos(eyepos + (aea:Forward() * 7) * math.max(1, mdlScale), true)
+        own:SetPos(eyepos + (aea:Forward() * 8) * math.max(1, mdlScale), true)
     end
 
     local in_forward = not isPly and caches.NPC_HasMoveGoal or self:HasKeyInput(IN_FORWARD)
@@ -3665,6 +3666,10 @@ function ENT:PreDrawPlayerHands(hands, vm, ply, wep)
     self.LastLArmDelta = Lerp(FrameTime() * 20, self.LastLArmDelta or lArmDelta, lArmDelta)
     lArmDelta = self.LastLArmDelta
 
+    --vm:SetupBones()
+    if isfunction(wep.DoLHIK) then
+        --wep:DoLHIK()
+    end
     hands:SetupBones()
 
     -- FROM SVMAL
@@ -3695,12 +3700,17 @@ function ENT:PreDrawPlayerHands(hands, vm, ply, wep)
         cachedHandModel = mdl
     end
 
-    local mtx = Matrix()
     for bone = 0, hands:GetBoneCount() - 1 do
         local name = hands:GetBoneName(bone)
 
         --print(name)
         if not cachedHandBoneWhitelist[bone] then continue end
+        -- TRMBase Support
+        local boneVM = vm:LookupBone(name)
+        if boneVM then
+            vm:CopyBoneMatrix(boneVM, mtx)
+            hands:SetBoneMatrix(bone, mtx)
+        end
 
         local bone2 = rag:LookupBone(name)
         -- 抽象, 理论上它们都应存在

@@ -26,6 +26,7 @@ local cv_kd_damagecalc_usetakedamage = CreateConVar(cvPrefix .. "damagecalc_uset
 local cv_kd_ctrl_useheadang = CreateConVar(cvPrefix .. "control_useheadangles", 0, cvTags, "在玩家转动视角时使用玩家目前的头部朝向计算, 会导致无法翻滚", 0, 1)
 
 local cv_kd_perf_luacode_nexttick = CreateConVar(cvPrefix .. "performance_luacode_nexttick", 0.01, cvTags, "[性能][代码相关] 下次统一运行控制器Tick()的时间, 这个值越大布娃娃效果越拉跨(但性能会好点我猜), 不建议大于0.03", 0)
+--local cv_kd_perf_luacode_usecustomdraw = CreateConVar(cvPrefix .. "performance_luacode_usecustomdraw", 1, cvTags, "[性能][代码相关] TBA", 0, 1)
 
 CreateConVar(cvPrefix .. "npc_usehook_createentityragdoll", 0, cvTags, "在NPC被击倒时调用CreateEntityRagdoll", 0, 1)
 CreateConVar(cvPrefix .. "playdead_npc_usehook_createentityragdoll", 1, cvTags, "在NPC假死时调用CreateEntityRagdoll", 0, 1)
@@ -465,10 +466,9 @@ funchooks.Add("Entity.EyePos", "Savee_AdvRagKnockdown_Sync", function(ply, raw, 
     local sysTime = SysTime()
     
     if lastSysTime_EyePos >= sysTime and ctrl.VarCaches["EyePos"] then 
-        --print("有点拦截了") 
         return ctrl.VarCaches["EyePos"] 
     end
-    lastSysTime_EyePos = sysTime + tickInterval
+    lastSysTime_EyePos = sysTime + tickInterval * 0.05
 
     local rag = ctrl:GetRagdoll()
 
@@ -889,7 +889,7 @@ hook.Add("EntityFireBullets", "Savee_AdvRagKnockdown_HitScanMod", function(ent, 
         mask = MASK_SHOT,
     })]]
     --local actualav = (tr.HitPos - shootPos):GetNormalized()
-    local av = ent:GetAimVector(true)
+    local av = CLIENT and bullet.Dir or ent:GetAimVector(true)
     -- 神秘Bug修复
     local bDir = (isSP or SERVER) and bullet.Dir or av
 
@@ -2092,7 +2092,6 @@ else
         local self = getController(LocalPlayer():GetViewEntity())
         if returnCheck(self) then return end
         return self:PreDrawPlayerHands(...)
-    
     end)
 
     -- EF_BONEMERGE特有的双绘制
@@ -2248,7 +2247,7 @@ else
         --own:SetPos(pos)
         render.SetLightingOrigin(pos)
         local result = {__undetoured(ent, fl, ...)}
-        if isSP then rag:SetPos(oldPos) end
+        rag:SetPos(oldPos)
 
         return unpack(result)
     end)
