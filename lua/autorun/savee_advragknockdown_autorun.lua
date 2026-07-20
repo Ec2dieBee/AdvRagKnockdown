@@ -19,7 +19,9 @@ local cvTags = {FCVAR_ARCHIVE,FCVAR_REPLICATED}
 
 -- 证明我抄袭了RagKnockdown的有力证据
 local cv_kd_enabled = CreateConVar(cvPrefix .. "enabled", 1, cvTags, "字面意思, 除了typo", 0, 1)
---local cv_kd_delayedknockdown = CreateConVar(cvPrefix .. "knockdown_delayedknockdown", 1, cvTags, "字面意思, 除了typo", 0, 1)
+
+local cv_kd_knockdown_plyinveh = CreateConVar(cvPrefix .. "knockdown_playerinvehicle", 1, cvTags, "是否击倒在载具内的玩家(在载具内的玩家会被离开载具, 如果他们能)", 0, 1)
+
 local cv_kd_enabled_ply = CreateConVar(cvPrefix .. "enableply", 1, cvTags, "字面意思, 除了typo", 0, 1)
 local cv_kd_enabled_npc = CreateConVar(cvPrefix .. "enablenpc", 1, cvTags, "字面意思, 除了typo", 0, 1)
 local cv_kd_damagecalc_usetakedamage = CreateConVar(cvPrefix .. "damagecalc_usetakedamage", 0, cvTags, "使用TakeDamageInfo并更进一步修改BulletTable, 可能会出现没受到伤害且力度不够时仍被击倒的情况", 0, 1)
@@ -36,11 +38,14 @@ CreateConVar(cvPrefix .. "statcalc_npc_conscdmgmul", 1, cvTags, "[对NPC] 意识
 CreateConVar(cvPrefix .. "statcalc_ply_staminadmgmul", 1, cvTags, "[对玩家] 体力伤害乘数", 0)
 CreateConVar(cvPrefix .. "statcalc_ply_conscdmgmul", 1, cvTags, "[对玩家] 意识伤害乘数", 0)
 
-local clcv_nodefkeybind = CreateClientConVar(cvPrefix .. "cl_disabledefaultkeybind", "0", true, true, "禁用默认的瞄准检测, 可能对某些服务器的设置有帮助", 0, 1)
+local clcv_ctrl_nodefkeybind = CreateClientConVar(cvPrefix .. "cl_control_disabledefaultkeybind", "0", true, true, "禁用默认的瞄准方法(按住E瞄准), 可能对某些服务器的自定义设置有帮助", 0, 1)
+local clcv_ctrl_reversedaiming = CreateClientConVar(cvPrefix .. "cl_control_reversedaiming", "0", true, true, "[仅按住E可用时] 按住E取消瞄准 而不是进行瞄准", 0, 1)
+local clcv_ctrl_aim = CreateClientConVar(cvPrefix .. "cl_control_disabledefaultkeybind", "0", true, true, "[仅自定义按键可用时] 击倒时默认开启瞄准(0: 关闭, 1: 仅主动击倒, 2: 任何情况下被击倒(需要服务器打开相关设置!))", 0, 2)
+local clcv_perf_usecalcviewmodelview = CreateClientConVar(cvPrefix .. "cl_performance_luacode_usecalcviewmodelview", "1", true, true, "[绘制][代码相关] 是否使用武器的CalcViewModelView, 可能有神秘小Bug", 0, 1)
 
-local entMeta = FindMetaTable("Entity")
-local plyMeta = FindMetaTable("Player")
-local npcMeta = FindMetaTable("NPC")
+--local entMeta = FindMetaTable("Entity")
+--local plyMeta = FindMetaTable("Player")
+--local npcMeta = FindMetaTable("NPC")
 
 local isSP = game.SinglePlayer()
 
@@ -1118,6 +1123,7 @@ if SERVER then
         end]]
 
         if ply:IsPlayer() and ply:InVehicle() then
+            if not cv_kd_knockdown_plyinveh:GetBool() then return end
             local can = hook.Run("CanExitVehicle", ply:GetVehicle(), ply)
             if not can then return end
             ply:ExitVehicle()
@@ -2041,7 +2047,7 @@ else
         ---@type Entity
         local ctrl = getController(ply)
         if not IsValid(ctrl) then return end
-        local aimingBind = clcv_nodefkeybind:GetBool() and input.LookupBinding("+advragknockdown_aimweapon") or input.LookupBinding(cvPrefix .. "toggleaimweapon")
+        local aimingBind = clcv_ctrl_nodefkeybind:GetBool() and input.LookupBinding("+advragknockdown_aimweapon") or input.LookupBinding(cvPrefix .. "toggleaimweapon")
         if not aimingBind then
             --print(1)
             --print(cmd:KeyDown(IN_USE))
@@ -2076,7 +2082,7 @@ else
         return not IsValid(self) or (not self.GetRagdoll or not IsValid(self:GetRagdoll()))
     end
 
-    hook.Add("CalcView", "Savee_AdvRagKnockdown_CTRLHook", function(ply, pos, ang, fov)
+    hook.Add("CalcView", "ZZZSavee_AdvRagKnockdown_CTRLHook", function(ply, pos, ang, fov)
         local self = getController(ply)
         if returnCheck(self) then return end
         return self:CalcView(ply, pos, ang, fov)
@@ -2220,6 +2226,9 @@ else
     }
 
     funchooks.Add("Entity.DrawModel", "Savee_AdvRagKnockdown_SuspendInsufficientDraw", function(ent, fl, ...)
+        
+        --do return __undetoured(ent, fl, ...) end
+
         local own = ent
         
         if ent:IsWeapon() then
