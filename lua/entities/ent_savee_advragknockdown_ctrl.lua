@@ -1750,7 +1750,7 @@ function ENT:Think()
     local hit = groundTr.Hit
     --print(groundTr.Hit)
     local newOGS = 0
-    if hit or rag:WaterLevel() >= 2 then
+    if hit or rag:WaterLevel() >= 1 then
         newOGS = 1
     else
         if IsValid(self.LHand_Grabbing) then
