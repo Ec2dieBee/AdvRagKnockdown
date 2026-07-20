@@ -677,8 +677,8 @@ local function replaceRagconstraint(rag, pObjs, bchild, bparent, minAng, maxAng,
     local armPos, armAng = parentMtx:GetTranslation(), parentMtx:GetAngles()
     local handPos, handAng = childMtx:GetTranslation(), childMtx:GetAngles()
     
-    --SafeRemoveEntityDelayed(ent, tickInterval)
-    ent:Remove()
+    SafeRemoveEntityDelayed(ent, tickInterval)
+    --ent:Remove()
 
     lArmP:EnableMotion(false)
     lHandP:EnableMotion(false)
