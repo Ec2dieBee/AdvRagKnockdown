@@ -13,6 +13,8 @@
 
 AddCSLuaFile()
 
+SAVEE_ADVRAGKNOCKDOWN_CONTROLLERS = SAVEE_ADVRAGKNOCKDOWN_CONTROLLERS or {}
+
 -- CVs
 local cvPrefix = "savee_advragknockdown_"
 local cvTags = {FCVAR_ARCHIVE,FCVAR_REPLICATED}
@@ -28,6 +30,7 @@ local cv_kd_damagecalc_usetakedamage = CreateConVar(cvPrefix .. "damagecalc_uset
 local cv_kd_ctrl_useheadang = CreateConVar(cvPrefix .. "control_useheadangles", 0, cvTags, "在玩家转动视角时使用玩家目前的头部朝向计算, 会导致无法翻滚", 0, 1)
 
 local cv_kd_perf_luacode_nexttick = CreateConVar(cvPrefix .. "performance_luacode_nexttick", 0.01, cvTags, "[性能][代码相关] 下次统一运行控制器Tick()的时间, 这个值越大布娃娃效果越拉跨(但性能会好点我猜), 不建议大于0.03", 0)
+local cv_kd_perf_luacode_tracelevel = CreateConVar(cvPrefix .. "performance_luacode_tracelevel", 2, cvTags, "[需重启][性能][代码相关] 查找Trace的层数, 越高越\"广泛\", 操作涉及到布娃娃的面越广, 但有潜在的性能消耗", 0)
 --local cv_kd_perf_luacode_usecustomdraw = CreateConVar(cvPrefix .. "performance_luacode_usecustomdraw", 1, cvTags, "[性能][代码相关] TBA", 0, 1)
 
 CreateConVar(cvPrefix .. "npc_usehook_createentityragdoll", 0, cvTags, "在NPC被击倒时调用CreateEntityRagdoll", 0, 1)
@@ -40,7 +43,7 @@ CreateConVar(cvPrefix .. "statcalc_ply_conscdmgmul", 1, cvTags, "[对玩家] 意
 
 local clcv_ctrl_nodefkeybind = CreateClientConVar(cvPrefix .. "cl_control_disabledefaultkeybind", "0", true, true, "禁用默认的瞄准方法(按住E瞄准), 可能对某些服务器的自定义设置有帮助", 0, 1)
 local clcv_ctrl_reversedaiming = CreateClientConVar(cvPrefix .. "cl_control_reversedaiming", "0", true, true, "[仅按住E可用时] 按住E取消瞄准 而不是进行瞄准", 0, 1)
-local clcv_ctrl_aim = CreateClientConVar(cvPrefix .. "cl_control_disabledefaultkeybind", "0", true, true, "[仅自定义按键可用时] 击倒时默认开启瞄准(0: 关闭, 1: 仅主动击倒, 2: 任何情况下被击倒(需要服务器打开相关设置!))", 0, 2)
+local clcv_ctrl_aim = CreateClientConVar(cvPrefix .. "cl_control_autoaim", "0", true, true, "[仅自定义按键可用时] 击倒时默认开启瞄准(0: 关闭, 1: 仅主动击倒, 2: 任何情况下被击倒(需要服务器打开相关设置!))", 0, 2)
 local clcv_perf_usecalcviewmodelview = CreateClientConVar(cvPrefix .. "cl_performance_luacode_usecalcviewmodelview", "1", true, true, "[绘制][代码相关] 是否使用武器的CalcViewModelView, 可能有神秘小Bug", 0, 1)
 
 --local entMeta = FindMetaTable("Entity")
@@ -133,13 +136,14 @@ local function getController(ent)
 end
 
 -- debug.lua
+local traceLvl = cv_kd_perf_luacode_tracelevel:GetInt()
 local function debugTrace()
 
 	local level = 1
 
 	local str = ""
 
-	while level <= 8 do
+	while level <= traceLvl do
 
 		local info = debug.getinfo( level, "Sln" )
 		if ( !info ) then break end
@@ -348,6 +352,7 @@ for _, str in ipairs(setItOnMe) do
         if ent:IsRagdoll() and ent.Initialized then
             local own = ctrl:GetOwner()
             own["Set" .. str](own, ...)
+            dangerzone = false
             return
         end
         local rag = ctrl:GetRagdoll()
@@ -363,18 +368,9 @@ for _, str in ipairs(setItOnMe) do
 
 end
 
---funchooks.Add("util.TraceLine", "Savee_AdvRagKnockdown_HitScanMod", trOverride)
-----funchooks.Add("util.TraceLine", "Savee_AdvRagKnockdown_HitScanMod2", trOverride)
---funchooks.Add("util.TraceHull", "Savee_AdvRagKnockdown_HitScanMod", trOverride)
---funchooks.Add("util.TraceEntity", "Savee_AdvRagKnockdown_HitScanMod", trOverride)
---funchooks.Add("util.TraceEntityHull", "Savee_AdvRagKnockdown_HitScanMod", trOverride)
+funchooks.Add("Entity.GetPos", "Savee_AdvRagKnockdown_Sync", function(ent, raw, ...)
 
-
---print(funchooks.GetRawFunction("util.TraceLine"))
-
---[[funchooks.Add("Entity.GetPos", "Savee_AdvRagKnockdown_Sync", function(ent, raw, ...)
-
-    if true or raw or not entTypeCheck(ent) then return __undetoured(ent, raw, ...) end
+    if raw or not entTypeCheck(ent) then return __undetoured(ent, raw, ...) end
     local ctrl = getController(ent)
     if not IsValid(ctrl) then return __undetoured(ent, raw, ...) end
     local rag = ctrl:GetRagdoll()
@@ -382,7 +378,7 @@ end
 
     return bone
    
-end)]]
+end)
 
 local doOriginalHTs = {
     ["knife"] = true,
@@ -1005,8 +1001,8 @@ hook.Add("Tick", "Savee_AdvRagKnockdown_CtrlTick", function()
 
     --print("Run")
 
-    for _, ent in pairs(ents.FindByClass("ent_savee_advragknockdown_ctrl")) do
-        if not IsValid(ent) or ent:IsMarkedForDeletion() then continue end
+    for ent, _ in pairs(SAVEE_ADVRAGKNOCKDOWN_CONTROLLERS) do
+        if not IsValid(ent) or ent:IsMarkedForDeletion() then SAVEE_ADVRAGKNOCKDOWN_CONTROLLERS[ent] = nil continue end
         
         local own = ent:GetOwner()
         if not IsValid(ent:GetRagdoll()) or not IsValid(own) or own:IsMarkedForDeletion() or own:Health() <= 0 then ent:RemoveSelf() continue end
@@ -1108,7 +1104,7 @@ if SERVER then
         local oldCtrl = getController(ply)
         if IsValid(oldCtrl) then
             oldCtrl.GettingUp = false
-            if own:IsNPC() then
+            if ply:IsNPC() then
                 oldCtrl:SetCachedVar("NPC_CanGetUpVar", false, math.Rand(3, 7))
             end
         end
@@ -1169,98 +1165,6 @@ if SERVER then
             if not IsValid(ply) or IsValid(getController(ply)) then return end
             return doKnockdown(ply, vec, bone)
         end)
-
-    end
-
-    local function replaceRagconstraint(rag, pObjs, bchild, bparent, minAng, maxAng, fric)
-    
-        if not IsValid(rag) or not bchild or not bparent then return end
-        if not rag:LookupBone(bparent) or not rag:LookupBone(bchild) then return end
-        
-        --local _
-        minAng = minAng or Angle()
-        maxAng = maxAng or Angle()
-        fric = fric or 0
-        
-        -- 我甚至记得下来完整的前缀
-        -- 每个正常模型都有的玩意, 没有就让它滚
-        local lArm = pObjs and pObjs[bparent].id or rag:TranslateBoneToPhysBone(rag:LookupBone(bparent))
-        local lHand = pObjs and pObjs[bchild].id or rag:TranslateBoneToPhysBone(rag:LookupBone(bchild))
-        local lArmP = pObjs and pObjs[bparent].pObj or rag:GetPhysicsObjectNum(rag:TranslateBoneToPhysBone(rag:LookupBone(bparent)))
-        local lHandP = pObjs and pObjs[bchild].pObj or rag:GetPhysicsObjectNum(rag:TranslateBoneToPhysBone(rag:LookupBone(bchild)))
-        --print(rag:GetBoneName(rag:LookupBone(bparent)), rag:GetBoneName(rag:LookupBone(bchild)), rag:GetBoneName(rag:TranslatePhysBoneToBone(lArm)))
-        local oldHandPos, oldHandAng, oldArmPos, oldArmAng = lHandP:GetPos(), lHandP:GetAngles(), lArmP:GetPos(), lArmP:GetAngles()
-        --local oldHandAng = lHandP:GetAngles()
-
-        --lHandP:ClearGameFlag(FVPHYSICS_PART_OF_RAGDOLL)
-        --lHandP:ClearGameFlag(FVPHYSICS_MULTIOBJECT_ENTITY)
-        
-        local ent = ents.Create("base_anim")
-        ent:SetModel(rag:GetModel())
-        ent:SetPos(rag:GetPos())
-        ent:SetNoDraw(true)
-        ent:DrawShadow(false)
-        ent:Spawn()
-        
-        -- 我希望布娃娃的相对骨骼修改始终如一
-        -- constraint.AdvBallsocket局部过头(即相对当前角度), 需要复原才行
-        local parentMtx, childMtx = ent:GetBoneMatrix(ent:LookupBone(bparent)), ent:GetBoneMatrix(ent:LookupBone(bchild))
-        if not parentMtx or not childMtx then SafeRemoveEntityDelayed(ent, tickInterval) return end
-        local armPos, armAng = parentMtx:GetTranslation(), parentMtx:GetAngles()
-        local handPos, handAng = childMtx:GetTranslation(), childMtx:GetAngles()
-
-        lArmP:EnableMotion(false)
-        lHandP:EnableMotion(false)
-
-        lArmP:SetPos(armPos)
-        lArmP:SetAngles(armAng)
-
-        lHandP:SetPos(handPos)
-        lHandP:SetAngles(handAng)
-        
-        local wtlLH = WorldToLocal(lHandP:GetPos(), lHandP:GetAngles(), lArmP:GetPos(), lArmP:GetAngles())
-
-        --lHandP:SetAngles(oldArmAng)
-        -- 瞧瞧我发现了什么, phys_ragdollconstraint!
-        -- Verified By Savee14702 100%(Except one axis)
-        --lHandP:SetAngles(oldHandAng)
-        --lHandP:Wake()
-        --local const = constraint.AdvBallsocket(rag, rag, lArm, lHand, wtlLH, nil, 0, 0, minAng.p, minAng.y, minAng.r, maxAng.p, maxAng.y, maxAng.r, fric, fric, fric, 0, 1)
-        --local _, correctedAng = LocalToWorld(vector_origin, Angle(0, 0, -90), vector_origin, lArmP:GetAngles())
-        --lHandP:SetAngles(correctedAng)
-        constraint.AdvBallsocket(rag, rag, lArm, lHand, wtlLH, nil, 0, 0, minAng.p, minAng.y, minAng.r, maxAng.p, maxAng.y, maxAng.r, fric, fric, fric, 0, 1)
-        --print(const)
-        --local constEst = constraint.Elastic(rag, rag, lArm, lHand, wtlLH, vector_origin, 20000, 500, 0.1, "", 0, false, Color(0, 0, 0, 0))
-        --local constRop = constraint.Rope(rag, rag, lArm, lHand, wtlLH, vector_origin, 1, 01, 0, 0, "", false, Color(0, 0, 0, 0))
-        --const:SetSaveValue("m_bSimulatedEveryTick", true)
-        --PrintTable(const:GetSaveTable(true))
-
-        --table.insert(rag.Savee_AdvRagKnockdown_ShitConsts, const)
-        
-        --constraint.Rope(rag, rag, lArm, lHand, wtlLH, Vector(), 0.01, 0, 0, 0, "", false, Color(0, 0, 0, 0))
-        lArmP:SetPos(oldArmPos)
-        lArmP:SetAngles(oldArmAng)
-        lHandP:SetPos(oldHandPos)
-        lHandP:SetAngles(oldHandAng)
-
-        lArmP:EnableMotion(true)
-        lHandP:EnableMotion(true)
-
-        SafeRemoveEntityDelayed(ent, tickInterval)
-        
-        --lHandP:SetAngles(oldArmAng)
-        --lHandP:Wake()
-
-        --constraint.AddConstraintTable(rag, const)
-        --[[if IsValid(constEst) then 
-            table.insert(rag.Savee_AdvRagKnockdown_ShitConsts, constEst)
-        end
-        if IsValid(constRop) then 
-            table.insert(rag.Savee_AdvRagKnockdown_ShitConsts, constRop)
-        end]]
-
-
-        --print("Approved By Queen JIAFEI 100%")
 
     end
 
@@ -1332,40 +1236,6 @@ if SERVER then
         --print(atk, (atk:IsWorld() or (atk:CreatedByMap() and atk:GetMoveType() ~= MOVETYPE_VPHYSICS) or atk:IsRagdoll()) and (di:IsDamageType(DMG_CRUSH) or di:IsDamageType(DMG_FALL)))
         if atk:IsWorld() or (IsValid(atk) and (atk:GetSolid() == SOLID_VPHYSICS and (atk:IsRagdoll() or atk:CreatedByMap()))) then
             return
-            --[[local pObj = rag:GetPhysicsObjectNum(rag:TranslateBoneToPhysBone(nearestBone(rag, di:GetDamagePosition()))) or rag:GetPhysicsObject()
-
-            local vel = rag:GetVelocity()
-            local tr = util.TraceEntityHull({
-                start = rag:GetPos(), 
-                endpos = rag:GetPos() - Vector(0, 0, 15),
-                filter = {rag, own}
-            }, rag)
-
-            if IsValid(tr.Entity) then vel = vel - tr.Entity:GetVelocity() end
-
-            local spdMul = (vel:Length() - 450) / 500 * Lerp((vel.z - 200) / 400, 0.9, 1.5)
-            --print(spdMul)
-            local finalDmg = (atk == rag or CurTime() <= ctrl.PreventPhysAttackTill) and 0 or math.max(dmg / (rag:GetPhysicsObjectCount() * Lerp(spdMul, 1, 0)) - pObj:GetMass() * Lerp(spdMul, 1, 0), 0)
-
-            if ctrl.RagPhysDmgTakenCount >= 5 then
-                finalDmg = finalDmg / 5
-            end
-
-            local hgMul = hitGroupPhysicsDmgMuls[hitGroup or 0]
-            --local dtMul = dmgTypeMuls[di:GetDamageType()]
-
-            finalDmg = finalDmg * (hgMul or 1) --* (dtMul and dtMul[2] or 1)
-
-            local numpObjs = rag:GetPhysicsObjectCount()
-            -- Breen.mdl
-            local pObjReduce = math.max(1, numpObjs - 14)
-            
-            finalDmg = finalDmg / pObjReduce
-
-            di:SetDamage(finalDmg)
-            if finalDmg > 0 then
-                ctrl.RagPhysDmgTakenCount = math.min(8, ctrl.RagPhysDmgTakenCount + 1)
-            end]]
         else
             hook.Run(own:IsPlayer() and "ScalePlayerDamage" or "ScaleNPCDamage", own, hitGroup, di)
         end
@@ -1460,41 +1330,96 @@ if SERVER then
     Savee_AdvRagKnockdown_DoRagDamage = calcRagDamage
     Savee_AdvRagKnockdown_DoKnockdown = doKnockdown
 
-    --[[concommand.Add(cvPrefix .. "knockdowntest", function()
-        doKnockdown(Entity(1):GetEyeTrace().Entity)
-    end)
-
-    concommand.Add(cvPrefix .. "test", function(p)
+    -- 甲级战犯, 崩溃主要导致者(对NPC 我猜)
+-- 导致我浪费好几个小时的罪魁祸首
+-- 经验证, 可能是布娃娃移除的时机不对/未能消除所有约束导致
+function Savee_AdvRagKnockdown_ReplaceRagConstraint(rag, pObjs, bchild, bparent, minAng, maxAng, fric)
     
-        local rag = p:GetEyeTrace().Entity
+        if not IsValid(rag) or not bchild or not bparent then return end
+        if not rag:LookupBone(bparent) or not rag:LookupBone(bchild) then return end
 
-        for i = 0, rag:GetPhysicsObjectCount() - 1 do
-            local pobj = rag:GetPhysicsObjectNum(i)
-            pobj:SetDragCoefficient(10000)
-            pobj:SetAngleDragCoefficient(10000)
-            pobj:SetInertia(Vector())
+        --local _
+        minAng = minAng or Angle()
+        maxAng = maxAng or Angle()
+        fric = fric or 0
+
+        -- 我甚至记得下来完整的前缀
+        -- 每个正常模型都有的玩意, 没有就让它滚
+        local lArm = pObjs and pObjs[bparent].id or rag:TranslateBoneToPhysBone(rag:LookupBone(bparent))
+        local lHand = pObjs and pObjs[bchild].id or rag:TranslateBoneToPhysBone(rag:LookupBone(bchild))
+        local lArmP = pObjs and pObjs[bparent].pObj or rag:GetPhysicsObjectNum(rag:TranslateBoneToPhysBone(rag:LookupBone(bparent)))
+        local lHandP = pObjs and pObjs[bchild].pObj or rag:GetPhysicsObjectNum(rag:TranslateBoneToPhysBone(rag:LookupBone(bchild)))
+        --print(rag:GetBoneName(rag:LookupBone(bparent)), rag:GetBoneName(rag:LookupBone(bchild)), rag:GetBoneName(rag:TranslatePhysBoneToBone(lArm)))
+        local oldHandPos, oldHandAng, oldArmPos, oldArmAng = lHandP:GetPos(), lHandP:GetAngles(), lArmP:GetPos(), lArmP:GetAngles()
+        --local oldHandAng = lHandP:GetAngles()
+
+        --lHandP:ClearGameFlag(FVPHYSICS_PART_OF_RAGDOLL)
+        --lHandP:ClearGameFlag(FVPHYSICS_MULTIOBJECT_ENTITY)
+
+        local ent = ents.Create("base_anim")
+        ent:SetModel(rag:GetModel())
+        ent:SetPos(rag:GetPos())
+        ent:SetNoDraw(true)
+        ent:DrawShadow(false)
+        ent:Spawn()
+
+        -- 我希望布娃娃的相对骨骼修改始终如一
+        -- constraint.AdvBallsocket局部过头(即相对当前角度), 需要复原才行
+        local parentMtx, childMtx = ent:GetBoneMatrix(ent:LookupBone(bparent)), ent:GetBoneMatrix(ent:LookupBone(bchild))
+        if not parentMtx or not childMtx then SafeRemoveEntityDelayed(ent, tickInterval) return end
+        local armPos, armAng = parentMtx:GetTranslation(), parentMtx:GetAngles()
+        local handPos, handAng = childMtx:GetTranslation(), childMtx:GetAngles()
+
+        SafeRemoveEntityDelayed(ent, tickInterval)
+        --ent:Remove()
+
+        lArmP:EnableMotion(false)
+        lHandP:EnableMotion(false)
+
+        lArmP:SetPos(armPos)
+        lArmP:SetAngles(armAng)
+
+        lHandP:SetPos(handPos)
+        lHandP:SetAngles(handAng)
+
+        local wtlLH = WorldToLocal(lHandP:GetPos(), lHandP:GetAngles(), lArmP:GetPos(), lArmP:GetAngles())
+
+        --lHandP:SetAngles(oldArmAng)
+        -- 瞧瞧我发现了什么, phys_ragdollconstraint!
+        -- Verified By Savee14702 100%(Except one axis)
+        --lHandP:SetAngles(oldHandAng)
+        --lHandP:Wake()
+        --local const = constraint.AdvBallsocket(rag, rag, lArm, lHand, wtlLH, nil, 0, 0, minAng.p, minAng.y, minAng.r, maxAng.p, maxAng.y, maxAng.r, fric, fric, fric, 0, 1)
+        --local _, correctedAng = LocalToWorld(vector_origin, Angle(0, 0, -90), vector_origin, lArmP:GetAngles())
+        --lHandP:SetAngles(correctedAng)
+        constraint.AdvBallsocket(rag, rag, lArm, lHand, wtlLH, nil, 0, 0, minAng.p, minAng.y, minAng.r, maxAng.p, maxAng.y, maxAng.r, fric, fric, fric, 0, 1)
+        rag:RemoveInternalConstraint(lHand)
+
+        lArmP:SetPos(oldArmPos)
+        lArmP:SetAngles(oldArmAng)
+        lHandP:SetPos(oldHandPos)
+        lHandP:SetAngles(oldHandAng)
+
+        lArmP:EnableMotion(true)
+        lHandP:EnableMotion(true)
+
+
+        --lHandP:SetAngles(oldArmAng)
+        --lHandP:Wake()
+
+        --constraint.AddConstraintTable(rag, const)
+        --[[if IsValid(constEst) then 
+            table.insert(rag.Savee_AdvRagKnockdown_ShitConsts, constEst)
         end
-    
-    end) ]]
-    --[[net.Receive("Savee_AdvRagKnockdown_UpdateRagLimbs", function(len, p)
+        if IsValid(constRop) then 
+            table.insert(rag.Savee_AdvRagKnockdown_ShitConsts, constRop)
+        end]]
 
-        local ctrl = p.Savee_AdvRagKnockdown_Controller
-        if not IsValid(ctrl) then return end
 
-        local limb = net.ReadUInt(BITCOUNT_LIMBINFO)
-        local pos = Vector(net.ReadFloat(), net.ReadFloat(), net.ReadFloat())
-        local ang = Angle(net.ReadFloat(), net.ReadFloat(), net.ReadFloat())
+        --print("Approved By Queen JIAFEI 100%")
 
-        local tbl = ctrl.LimbPos[SAVEE_ADVRAGKNOCKDOWN_LIMBS[limb]
-        if not tbl then
-            ctrl.LimbPos[SAVEE_ADVRAGKNOCKDOWN_LIMBS[limb] ] = {pos, ang}
-        else
-            tbl[1] = pos
-            tbl[2] = ang
-        end
+    end
 
-    
-    end)]]
     ---@diagnostic disable-next-line: gmod-net-read-write-order-mismatch
     net.Receive("Savee_AdvRagKnockdown_OperationMsg", function(len, p)
 
@@ -1584,14 +1509,6 @@ if SERVER then
 
     --[[local dis = 0
 
-    funchooks.Add("Entity.TakeDamageInfo", "Savee_AdvRagKnockdown_Debugstuffs", function(ply, di, ...)
-
-        dis = dis + 1
-        if dis > 128 then error("操你妈 外乡人", 2) return end
-
-        return __undetoured(ply, di, ...)
-    
-    end)]]
 
     -- 优化(真的吗?)
 
@@ -1754,16 +1671,16 @@ if SERVER then
     
     hook.Add("PostCleanupMap", "Savee_AdvRagKnockdown_ResetRagdoll", function()
     
-        for _, ent in pairs(ents.FindByClass("ent_savee_advragknockdown_ctrl")) do
-            if not IsValid(ent) or ent:IsMarkedForDeletion() then return end
+        for _, ent in pairs(SAVEE_ADVRAGKNOCKDOWN_CONTROLLERS) do
+            if not IsValid(ent) or ent:IsMarkedForDeletion() then SAVEE_ADVRAGKNOCKDOWN_CONTROLLERS[ent] = nil continue end
             
             local own = ent:GetOwner()
             local rag = ent:GetRagdoll()
             if not IsValid(rag) or not IsValid(own) or not own:IsPlayer() or not own:Alive() then ent:RemoveSelf() continue end
 
             local angMax = Angle(65, 80, 80)
-            replaceRagconstraint(rag, ent.RagPObjs, "ValveBiped.Bip01_L_Hand", "ValveBiped.Bip01_L_Forearm", -angMax, angMax, 0)
-            replaceRagconstraint(rag, ent.RagPObjs, "ValveBiped.Bip01_R_Hand", "ValveBiped.Bip01_R_Forearm", -angMax, angMax, 0)
+            Savee_AdvRagKnockdown_ReplaceRagConstraint(rag, ent.RagPObjs, "ValveBiped.Bip01_L_Hand", "ValveBiped.Bip01_L_Forearm", -angMax, angMax, 0)
+            Savee_AdvRagKnockdown_ReplaceRagConstraint(rag, ent.RagPObjs, "ValveBiped.Bip01_R_Hand", "ValveBiped.Bip01_R_Forearm", -angMax, angMax, 0)
             
         end
     
@@ -1967,9 +1884,18 @@ else
 
     concommand.Add(cvPrefix .. "doknockdown", function()
         if not cv_kd_enabled:GetBool() then return end
+        local lp = LocalPlayer()
+        local ctrl = getController(lp)
+
         net.Start("Savee_AdvRagKnockdown_OperationMsg", true)
         net.WriteUInt(0, BITCOUNT_OPERATIONINFO)
         net.SendToServer()
+
+        --print(ctrl, clcv_ctrl_aim:GetInt() < 1)
+        if ctrl or clcv_ctrl_aim:GetInt() < 1 then return end
+
+        timer.Simple(isSP and 0 or lp:Ping() / 800,function() sendAimingMsg(1) end)
+    
     end)
 
     concommand.Add(cvPrefix .. "toggleaimweapon", function()
@@ -2011,7 +1937,7 @@ else
             if not IsValid(pObj) or not pos then continue end
             pObj:SetPos(pos)
             pObj:SetAngles(ang)
-            --pObj:SetVelocity(pObj2:GetVelocity())
+            pObj:SetVelocityInstantaneous(rag:GetVelocity())
         end
         --print(deadRag:GetPhysicsObjectNum(1))
     end)
@@ -2043,15 +1969,20 @@ else
         net.SendToServer()
     end)
 
+    local oldAimingState
+
     hook.Add("StartCommand", "Savee_AdvRagKnockdown_RagOperation", function(ply, cmd)
         ---@type Entity
         local ctrl = getController(ply)
-        if not IsValid(ctrl) then return end
+        if not IsValid(ctrl) then oldAimingState = false return end
         local aimingBind = clcv_ctrl_nodefkeybind:GetBool() and input.LookupBinding("+advragknockdown_aimweapon") or input.LookupBinding(cvPrefix .. "toggleaimweapon")
-        if not aimingBind then
+
+        local newAimingState = cmd:KeyDown(IN_USE)
+        if not aimingBind and newAimingState ~= oldAimingState then
             --print(1)
             --print(cmd:KeyDown(IN_USE))
-            sendAimingMsg(cmd:KeyDown(IN_USE) and 1 or 0)
+            sendAimingMsg(newAimingState and 1 or 0)
+            oldAimingState = newAimingState
         end
 
         --print(cmd:GetMouseX())
@@ -2108,41 +2039,6 @@ else
     hook.Add("PreDrawTranslucentRenderables", "Savee_AdvRagKnockdown_FuckEF_BONEMERGE", function()
         SAVEE_ADVRAGKNOCKDOWN_DRAWINGOPAQUE = false
     end)
-
-    --[[hook.Add("RenderScene", "Savee_AdvRagKnockdown_AltView", function(pos, ang, fov)
-        local lp = LocalPlayer()
-        if not IsValid(lp) or not cv_userenderview:GetBool() then return end
-        lp = lp:GetViewEntity()
-
-        local scrW, scrH = ScrW(), ScrH()
-
-        --lp:EyePos()
-
-        local ctrl = getController(lp)
-        if not IsValid(ctrl) then return end
-        local rag = ctrl:GetRagdoll()
-        local eyeatt = rag:LookupAttachment("eyes")
-        local eyepos = lp:EyePos()
-        local eyeang = lp:EyeAngles()
-        if eyeatt ~= 0 then
-            eyepos = rag:GetAttachment(eyeatt).Pos
-            eyeang = rag:GetAttachment(eyeatt).Ang        
-        end
-
-        render.RenderView({
-            origin = eyepos,
-            angles = ang,
-            x = 0, y = 0,
-            w = scrW, h = scrH,
-            drawhud = true,
-            drawmonitors = true,
-            dopostprocess = true,
-        })
-        --render.RenderHUD(0, 0, scrW, scrH)
-
-        return true
-
-    end)]]
 
     -- 给"健康系统"的显示, 毕竟这玩意不是ZCity所以东西都往简单了来(其实和原版没太大关系, 除了体力这个东西)
     local stamina, consc = 100, 100

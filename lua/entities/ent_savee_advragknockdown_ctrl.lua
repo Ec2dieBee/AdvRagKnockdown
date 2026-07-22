@@ -93,13 +93,6 @@ local boneMassList = {
 }
 
 local armBones = {
-    --[[["ValveBiped.Bip01_Spine2"] = {
-        forceMul = 1,
-        deltaAng = Angle(0, 0, 0)
-    },]]
-    --["ValveBiped.Bip01_Head1"] = 1,
-    --["ValveBiped.Bip01_L_Clavicle"] = 1,
-    --["ValveBiped.Bip01_R_Clavicle"] = 1,
     ["ValveBiped.Bip01_L_UpperArm"] = {
         forceMul = 1,
         deltaAng = Angle()
@@ -116,16 +109,6 @@ local armBones = {
         forceMul = 1,
         deltaAng = Angle(0, 0, 0)
     },
-    --[[["ValveBiped.Bip01_L_Hand"] = {
-        forceMul = 5,
-        dampForceMul = 5,
-        deltaAng = Angle()
-    },]]
-    --[[["ValveBiped.Bip01_R_Hand"] = {
-        forceMul = 5,
-        dampForceMul = 5,
-        deltaAng = Angle(0, 0, 0)
-    },]]
 }
 -- 我承认我的英语是一坨屎
 local originalAnimBones = {
@@ -165,12 +148,12 @@ local originalAnimBones = {
 }
 
 local lArmDeltaBones = {
-    ["ValveBiped.Bip01_L_Upperarm"] = true,
+    ["ValveBiped.Bip01_L_UpperArm"] = true,
     ["ValveBiped.Bip01_L_Forearm"] = true,
     ["ValveBiped.Bip01_L_Hand"] = true,
 }
 local rArmDeltaBones = {
-    ["ValveBiped.Bip01_R_Upperarm"] = true,
+    ["ValveBiped.Bip01_R_UpperArm"] = true,
     ["ValveBiped.Bip01_R_Forearm"] = true,
     ["ValveBiped.Bip01_R_Hand"] = true,
 }
@@ -233,38 +216,6 @@ local aimPosDelta = {
     ["passive"] = twoArmAimDelta,
     ["magic"] = oneArmAimDelta,
 }
-
--- 手调吧, QTMD
---[[local twoArmAimDelta = {
-    ["ValveBiped.Bip01_R_UpperArm"] = Angle(50, -40, 180), 
-    ["ValveBiped.Bip01_R_Forearm"] = Angle(-50, 60, 180),
-}
-local oneArmAimDelta = {
-    ["ValveBiped.Bip01_R_UpperArm"] = Angle(30, -20, 180), 
-    ["ValveBiped.Bip01_R_Forearm"] = Angle(-30, 30, 180),
-}
-
-local aimPosDelta = {
-    ["pistol"] = oneArmAimDelta,
-    ["revolver"] = oneArmAimDelta,
-    ["duel"] = Vector(15, 10, -10),
-    ["smg"] = twoArmAimDelta,
-    ["ar2"] = twoArmAimDelta,
-    ["shotgun"] = twoArmAimDelta,
-    ["rpg"] = twoArmAimDelta,
-    ["physgun"] = twoArmAimDelta,
-    ["crossbow"] = twoArmAimDelta,
-    ["camera"] = twoArmAimDelta,
-    ["slam"] = oneArmAimDelta,
-    ["normal"] = Vector(),
-    ["grenade"] = oneArmAimDelta,
-    ["melee"] = oneArmAimDelta,
-    ["melee2"] = oneArmAimDelta,
-    ["knife"] = oneArmAimDelta,
-    ["fist"] = oneArmAimDelta,
-    ["passive"] = twoArmAimDelta,
-    ["magic"] = oneArmAimDelta,
-}]]
 
 -- 如果 这个武器的 ~= 热兵器(手雷一边凉快去) 那么
 --     武器.不用自定义位置 = 真
@@ -607,16 +558,6 @@ ENT.AnimationTable = {
             GetUp_Stand = 0.8,
             GetUp_Duck = 0.6,
         },
-        --[[{
-            Model = "models/Zombie/Classic.mdl",
-            Sequence = "slumprise_b", -- 可以是数字
-            AngDelta = Angle(0, -90, 0), -- 相对角度偏移
-
-            -- PhysControl Parameter
-            -- {startCycle, EndCycle}
-            Recover = {0, 0},
-            Recover_Duck = {0, 0},
-        },]]
     },
 }
 
@@ -640,105 +581,6 @@ function ENT:SpawnFunction(ply, tr, ClassName)
 end
 
 
--- 甲级战犯, 崩溃主要导致者(对NPC 我猜)
--- 导致我浪费好几个小时的罪魁祸首
--- 经验证, 可能是布娃娃移除的时机不对/未能消除所有约束导致
-local function replaceRagconstraint(rag, pObjs, bchild, bparent, minAng, maxAng, fric)
-    
-    if not IsValid(rag) or not bchild or not bparent then return end
-    if not rag:LookupBone(bparent) or not rag:LookupBone(bchild) then return end
-    
-    --local _
-    minAng = minAng or Angle()
-    maxAng = maxAng or Angle()
-    fric = fric or 0
-    
-    -- 我甚至记得下来完整的前缀
-    -- 每个正常模型都有的玩意, 没有就让它滚
-    local lArm = pObjs and pObjs[bparent].id or rag:TranslateBoneToPhysBone(rag:LookupBone(bparent))
-    local lHand = pObjs and pObjs[bchild].id or rag:TranslateBoneToPhysBone(rag:LookupBone(bchild))
-    local lArmP = pObjs and pObjs[bparent].pObj or rag:GetPhysicsObjectNum(rag:TranslateBoneToPhysBone(rag:LookupBone(bparent)))
-    local lHandP = pObjs and pObjs[bchild].pObj or rag:GetPhysicsObjectNum(rag:TranslateBoneToPhysBone(rag:LookupBone(bchild)))
-    --print(rag:GetBoneName(rag:LookupBone(bparent)), rag:GetBoneName(rag:LookupBone(bchild)), rag:GetBoneName(rag:TranslatePhysBoneToBone(lArm)))
-    local oldHandPos, oldHandAng, oldArmPos, oldArmAng = lHandP:GetPos(), lHandP:GetAngles(), lArmP:GetPos(), lArmP:GetAngles()
-    --local oldHandAng = lHandP:GetAngles()
-
-    --lHandP:ClearGameFlag(FVPHYSICS_PART_OF_RAGDOLL)
-    --lHandP:ClearGameFlag(FVPHYSICS_MULTIOBJECT_ENTITY)
-    
-    local ent = ents.Create("base_anim")
-    ent:SetModel(rag:GetModel())
-    ent:SetPos(rag:GetPos())
-    ent:SetNoDraw(true)
-    ent:DrawShadow(false)
-    ent:Spawn()
-    
-    -- 我希望布娃娃的相对骨骼修改始终如一
-    -- constraint.AdvBallsocket局部过头(即相对当前角度), 需要复原才行
-    local parentMtx, childMtx = ent:GetBoneMatrix(ent:LookupBone(bparent)), ent:GetBoneMatrix(ent:LookupBone(bchild))
-    if not parentMtx or not childMtx then SafeRemoveEntityDelayed(ent, tickInterval) return end
-    local armPos, armAng = parentMtx:GetTranslation(), parentMtx:GetAngles()
-    local handPos, handAng = childMtx:GetTranslation(), childMtx:GetAngles()
-    
-    SafeRemoveEntityDelayed(ent, tickInterval)
-    --ent:Remove()
-
-    lArmP:EnableMotion(false)
-    lHandP:EnableMotion(false)
-
-    lArmP:SetPos(armPos)
-    lArmP:SetAngles(armAng)
-
-    lHandP:SetPos(handPos)
-    lHandP:SetAngles(handAng)
-    
-    local wtlLH = WorldToLocal(lHandP:GetPos(), lHandP:GetAngles(), lArmP:GetPos(), lArmP:GetAngles())
-
-    --lHandP:SetAngles(oldArmAng)
-    -- 瞧瞧我发现了什么, phys_ragdollconstraint!
-    -- Verified By Savee14702 100%(Except one axis)
-    --lHandP:SetAngles(oldHandAng)
-    --lHandP:Wake()
-    --local const = constraint.AdvBallsocket(rag, rag, lArm, lHand, wtlLH, nil, 0, 0, minAng.p, minAng.y, minAng.r, maxAng.p, maxAng.y, maxAng.r, fric, fric, fric, 0, 1)
-    --local _, correctedAng = LocalToWorld(vector_origin, Angle(0, 0, -90), vector_origin, lArmP:GetAngles())
-    --lHandP:SetAngles(correctedAng)
-    constraint.AdvBallsocket(rag, rag, lArm, lHand, wtlLH, nil, 0, 0, minAng.p, minAng.y, minAng.r, maxAng.p, maxAng.y, maxAng.r, fric, fric, fric, 0, 1)
-    rag:RemoveInternalConstraint(lHand)
-    --print(const)
-    --local constEst = constraint.Elastic(rag, rag, lArm, lHand, wtlLH, vector_origin, 20000, 500, 0.1, "", 0, false, Color(0, 0, 0, 0))
-    --local constRop = constraint.Rope(rag, rag, lArm, lHand, wtlLH, vector_origin, 1, 01, 0, 0, "", false, Color(0, 0, 0, 0))
-    --const:SetSaveValue("m_bSimulatedEveryTick", true)
-    --PrintTable(const:GetSaveTable(true))
-
-    --table.insert(rag.Savee_AdvRagKnockdown_ShitConsts, const)
-    
-    --constraint.Rope(rag, rag, lArm, lHand, wtlLH, Vector(), 0.01, 0, 0, 0, "", false, Color(0, 0, 0, 0))
-    lArmP:SetPos(oldArmPos)
-    lArmP:SetAngles(oldArmAng)
-    lHandP:SetPos(oldHandPos)
-    lHandP:SetAngles(oldHandAng)
-
-    lArmP:EnableMotion(true)
-    lHandP:EnableMotion(true)
-
-    
-    --lHandP:SetAngles(oldArmAng)
-    --lHandP:Wake()
-
-    --constraint.AddConstraintTable(rag, const)
-    --[[if IsValid(constEst) then 
-        table.insert(rag.Savee_AdvRagKnockdown_ShitConsts, constEst)
-    end
-    if IsValid(constRop) then 
-        table.insert(rag.Savee_AdvRagKnockdown_ShitConsts, constRop)
-    end]]
-
-    
-    --print("Approved By Queen JIAFEI 100%")
-    
-end
-
-
 -- SVOnly
 ---@param rag Entity
 local function modifyRagdoll(rag, pObjs, ownVel)
@@ -754,49 +596,28 @@ local function modifyRagdoll(rag, pObjs, ownVel)
     
     --PrintTable(constraint.FindConstraints(rag, "AdvBallsocket"))
     
+    local oldVels = {}
+
     -- dumbass_define_animandphys.qci
-    for _, data in pairs(pObjs) do
+    for i, data in pairs(pObjs) do
         local pObj = data.pObj
         if not pObj then continue end
+        oldVels[i] = pObj:GetVelocity()
         pObj:EnableMotion(false)
     end
 
-    replaceRagconstraint(rag, pObjs, "ValveBiped.Bip01_L_Hand", "ValveBiped.Bip01_L_Forearm", -angMax, angMax, 0)
-    replaceRagconstraint(rag, pObjs, "ValveBiped.Bip01_R_Hand", "ValveBiped.Bip01_R_Forearm", -angMax, angMax, 0)
+    Savee_AdvRagKnockdown_ReplaceRagConstraint(rag, pObjs, "ValveBiped.Bip01_L_Hand", "ValveBiped.Bip01_L_Forearm", -angMax, angMax, 0)
+    Savee_AdvRagKnockdown_ReplaceRagConstraint(rag, pObjs, "ValveBiped.Bip01_R_Hand", "ValveBiped.Bip01_R_Forearm", -angMax, angMax, 0)
     
-    for _, data in pairs(pObjs) do
+    for i, data in pairs(pObjs) do
         local pObj = data.pObj
         if not pObj then continue end
         pObj:EnableMotion(true)
-        pObj:SetVelocityInstantaneous(ownVel)
+        pObj:SetVelocityInstantaneous(oldVels[i] + ownVel)
     end
 
+    -- 在这加个CV
     do return end
-    --local self = rag.Savee_AdvRagKnockdown_Controller
-    --[[local pObjs = self.RagPObjs
-    
-    if not next(pObjs) or self.RagLastModel ~= rag:GetModel() then
-        pObjs = {}
-        -- Miku兼容
-        for i = 0, rag:GetBoneCount() - 1 do
-            
-            local pID = rag:TranslateBoneToPhysBone(i)
-            local pObj = rag:GetPhysicsObjectNum(pID)
-            --pObj:SetMaterial("Player")
-            
-            ---@type PhysObj
-            pObjs[rag:GetBoneName(i)] = {
-                id = pID,
-                pObj = pObj,
-                physBone = rag:TranslatePhysBoneToBone(pID) == i,
-            }
-            
-        end
-        
-        self.RagLastModel = rag:GetModel()
-        self.RagPObjs = pObjs
-        
-    end]]
     
     local objCount = rag:GetPhysicsObjectCount()
 
@@ -820,25 +641,6 @@ local function modifyRagdoll(rag, pObjs, ownVel)
     end
 
     if ctrl then ctrl.PreventPhysAttackTill = CurTime() + (objCount - 14) / 2 end
-    
-    -- 令人震惊的是AIMANGLE偏移居然是这个泌阳的Mass导致的
-    -- 没有物理思维的恶果来了, btw这段注释是从Tick里迁来的
-    --[[local rArm = rag:GetPhysicsObjectNum(rag:TranslateBoneToPhysBone(rag:LookupBone("ValveBiped.Bip01_R_Forearm")))
-    local rHand = rag:GetPhysicsObjectNum(rag:TranslateBoneToPhysBone(rag:LookupBone("ValveBiped.Bip01_R_Hand")))
-    local lArm = rag:GetPhysicsObjectNum(rag:TranslateBoneToPhysBone(rag:LookupBone("ValveBiped.Bip01_L_Forearm")))
-    local lHand = rag:GetPhysicsObjectNum(rag:TranslateBoneToPhysBone(rag:LookupBone("ValveBiped.Bip01_L_Hand")))
-    rHand:SetMass(rHand:GetMass() * 1.5)
-    lHand:SetMass(lHand:GetMass() * 1.5)]]
-    
-    --[[local head = rag:LookupBone("ValveBiped.Bip01_Head1")
-    if head then
-        head = rag:GetPhysicsObjectNum(rag:TranslateBoneToPhysBone(head))
-        head:SetMass(head:GetMass() * 55.5)
-    end]]
-    --replaceRagconstraint(rag, "ValveBiped.Bip01_R_Forearm", "ValveBiped.Bip01_R_UpperArm", -angMax, angMax, 0)
-    --replaceRagconstraint(rag, "ValveBiped.Bip01_R_UpperArm", "ValveBiped.Bip01_Spine2", -angMax, angMax, 0)
-    --replaceRagconstraint(rag, "ValveBiped.Bip01_L_Thigh", "ValveBiped.Bip01_Pelvis", Angle(-45, -30, -75), Angle(45, 30, 35), 25)
-    --replaceRagconstraint(rag, "ValveBiped.Bip01_R_Thigh", "ValveBiped.Bip01_Pelvis", Angle(-45, -30, -75), Angle(45, 30, 35), 25)
     
 end
 
@@ -897,33 +699,18 @@ function ENT:Initialize()
         return
     end
 
+    SAVEE_ADVRAGKNOCKDOWN_CONTROLLERS[self] = true
+
     --self:SetTransmitWithParent(true)
 
     if CLIENT then 
-        --[[hook.Add("CalcView", self, function(_, ply, pos, ang, fov)
-            --local self = getController(ply)
-            if not IsValid(self) or not IsValid(self:GetRagdoll()) then return end
-            return self:CalcView(ply, pos, ang, fov)
-    
-        end)
-        hook.Add("CalcViewModelView", self, function(_, ...)
-            --local self = getController(LocalPlayer():GetViewEntity())
-            if not IsValid(self) or not IsValid(self:GetRagdoll()) then return end
-            return self:CalcViewModelView(...)
-
-        end)
-        hook.Add("PreDrawPlayerHands", self, function(_, ...)
-            --local self = getController(LocalPlayer():GetViewEntity())
-            if not IsValid(self) or not IsValid(self:GetRagdoll()) then return end
-            return self:PreDrawPlayerHands(...)
-
-        end)]]
         local rag = self:GetRagdoll()
         -- 绘制问题, 现在NPC应该不会在击倒的时候闪烁一下了
         if IsValid(rag) then
             own:SetParent(rag)
             self:SetRenderBounds(rag:GetRenderBounds())
         end
+
         timer.Simple(tickInterval, function()
             self.Initialized = true
         end)
@@ -966,31 +753,13 @@ function ENT:Initialize()
     rag:SetModel(own:GetModel())
     rag:SetPos(self:GetPos())
     rag:SetAngles(own:GetAngles())
-    --rag:SetSolid(SOLID_VPHYSICS)
-    --rag:DrawShadow(false)
-    --rag:SetNoDraw(true)
-    --rag:SetParent(own)
 
     cloneAtoB(own, rag)
     --rag:RemoveFlags(FL_OBJECT)
 
     rag:Spawn()
     rag.Savee_AdvRagKnockdown_Controller = self
-    
-    --[[local lHand = rag:LookupBone("ValveBiped.Bip01_L_Hand")
-    local rHand = rag:LookupBone("ValveBiped.Bip01_R_Hand")
 
-    if lHand then
-        local handPos, handAng = rag:GetBonePosition(lHand)
-        local armPos, armAng = rag:GetBonePosition(rag:LookupBone("ValveBiped.Bip01_L_Forearm"))
-        self.LArm_LTW = WorldToLocal(handPos, angle_zero, armPos, armAng)
-    end
-    if rHand then
-        local handPos, handAng = rag:GetBonePosition(rHand)
-        local armPos, armAng = rag:GetBonePosition(rag:LookupBone("ValveBiped.Bip01_R_Forearm"))
-        self.RArm_LTW = WorldToLocal(handPos, angle_zero, armPos, armAng)
-    end]]
-    --own:CaoWo("yesyes")
 
     if own:IsNPC() and getCV("npc_usehook_createentityragdoll", "Bool") then
         local hooks = hook.GetTable().CreateEntityRagdoll
@@ -1099,21 +868,21 @@ function ENT:Initialize()
         if not IsValid(self) or not IsValid(own) then return end
 
         local ct = CurTime()
-        if ct <= self.PreventPhysAttackTill then return end
+        if ct + data.DeltaTime <= self.PreventPhysAttackTill then return end
 
         -- 我不认为你高速创到一个灰尘会导致你昏厥, 我觉得该昏的是灰尘
         local pObj = data.PhysObject
         
         local spd = data.HitSpeed --(data.OurOldVelocity - data.OurNewVelocity)
         local dot = spd:GetNormalized():Dot(data.HitNormal)
-        local mul = (1 - dot) / 2
+        local mul = math.ease.InQuart((1 - dot) / 2 + 0.1)
         spd = spd:Length()
 
         local official = boneMassList[rag:GetBoneName(pObj:GetIndex())]
 
         --print(spd * mul, mul)
 
-        spd = math.max(spd * mul - (official and 500 or 1200) / math.max(1, mdlScale), 0)
+        spd = math.max(spd * mul - (official and 800 or 1200) / math.max(1, mdlScale), 0)
 
         --print(spd)
         if spd == 0 or data.HitEntity == rag then return end
@@ -1121,31 +890,6 @@ function ENT:Initialize()
         local ent = data.HitEntity
 
         local dmg = spd / 10 - pObj:GetMass()
-        --print(dmg, ent)
-
-        --print(data.PhysObject)
-        --PrintTable(data.PhysObject:GetTable())
-
-        --[[local bone = nearestBone(rag, data.HitPos, true) --pObjtoBones[data.PhysObject] or 0
-        local hitGroup = rag.Savee_AdvRagKnockdown_HitGroups[bone]
-        local hgMul = hitGroupMuls[hitGroup or 0]
-
-        --print(rag:GetBoneName(bone), hitGroup)
-
-        local stDmg = spd / 100 * (hgMul and hgMul[1] or 1)
-        local csDmg = spd / 20 * (hgMul and hgMul[2] or 1)
-
-        local stamina = self:GetStamina()
-        stamina = stamina - stDmg
-
-        local consc = self:GetConsciousness()
-        consc = consc - csDmg
-
-        self:SetStamina(math.max(0, stamina))
-        self:SetConsciousness(math.max(0, consc))
-
-        self.NextRegenStamina = math.max(ct, self.NextRegenStamina) + math.Clamp(stDmg / 20, 0.1, 1)
-        self.NextRegenConsciousness = math.max(ct, self.NextRegenConsciousness) + math.Clamp(csDmg / 20, 0.1, 1.5)]]
 
         local di = DamageInfo()
         self.DI_MarkedAsTaken[di] = true
@@ -1168,7 +912,7 @@ function ENT:Initialize()
     self:SetRagdoll(rag)
     self:SetParent(rag)
 
-    self:SetLocalPos(vector_origin)
+    self:SetLocalPos(Vector(0, 0, 2))
     self:SetTransmitWithParent(true)
 
     local ownPos = own:GetPos()
@@ -1184,12 +928,6 @@ function ENT:Initialize()
 
     --own:FollowBone(rag, rag:LookupBone("ValveBiped.Bip01_R_Hand"))
     own:SetNW2Entity("Savee_AdvRagKnockdown_Controller", self)
-    --print(self, "设置父级", own, rag)
-    --if own:IsNPC() then
-    --own:FollowBone(rag, 1)
-    --else
-    --PrintTable(own:GetChildren())
-    --childs[#childs + 1] = own:GetInternalVariable("m_hMoveChild")
     
     -- 看起来是SetParent太早导致的VPhysics.dll抽风(access violation exception)
     -- 在sa_03测试了, 击杀3-4个盾兵并未发生崩溃情况(老方法会崩溃, 参见autorun.lua)
@@ -1227,17 +965,6 @@ function ENT:Initialize()
     fakePly:SetCollisionGroup(COLLISION_GROUP_IN_VEHICLE)
     fakePly:SetNoDraw(true)
     fakePly:SetAutomaticFrameAdvance(true)
-
-   --[[hook.Add("Tick", self, function()
-        if not IsValid(self) or self:IsMarkedForDeletion() then return end
-        if not IsValid(self:GetRagdoll()) or not IsValid(own) or own:IsMarkedForDeletion() or own:Health() <= 0 then self:RemoveSelf(true) return end
-        --if self:IsFlagSet(FL_KILLME) then return end
-        --local ct = CurTime()
-        --if self.NextCalcAnim > ct then return end
-        self:Tick()
-        --self.NextCalcAnim = ct + tickInterval * 2
-    end)]]
-    --hook.Add("Tick", self, self.Tick)
 
     --print(self, "钩子", own, rag)
 
@@ -1431,27 +1158,14 @@ end
 
 function ENT:OnRemove()
 
-    --[[if self.Removing then return end
-    self.Removing = true
-    hook.Remove("Tick", self)
-    --self:NextThink(CurTime() + 1)
-
-    if CLIENT then 
-        hook.Remove("CalcView", self)
-        hook.Remove("CalcViewModelView", self)
-        if IsValid(self.CSEnt) then self.CSEnt:Remove() end
-        if IsValid(self.FakePlyModel) then self.FakePlyModel:Remove() end
-        --if IsValid(self.CSRagdoll) then self.CSRagdoll:Remove() end
-        return
-    end]]
-    --print("Removed")
-
     self.Removing = true
     local rag = self:GetRagdoll()
     
     if CLIENT then 
         return
     end
+
+    SAVEE_ADVRAGKNOCKDOWN_CONTROLLERS[self] = nil
 
     local own = self:GetOwner()
     --print(rag)
@@ -1987,11 +1701,11 @@ end
 
 -- 这样你就不必来来回回
 
-local torsoang, torsoangdamp, torsospd, torsospddamp, torsodampfactor, torsodelta = 100, 150, 0, 0, 0.2, 0.15
+local torsoang, torsoangdamp, torsospd, torsospddamp, torsodampfactor, torsodelta = 650, 450, 0, 0, 0.2, 0.07
 --local torsomovespd, torsomovespddamp, torsomovespddelta = 450, 450, 0.2
 local headang, headangdamp, headspd, headspddamp, headdampfactor, headdelta = 220, 200, 0, 0, 0.5, 0.01
 local handang, handangdamp, handspd, handspddamp, handdampfactor, handdelta = 265, 265, 635, 235, 0.8, 0.2
-local handaimang, handaimangdamp, handaimspd, handaimspddamp, handaimdampfactor, handaimdelta = 250, 150, 5, 0, 0.8, 0.05
+local handaimang, handaimangdamp, handaimspd, handaimspddamp, handaimdampfactor, handaimdelta = 250, 150, 2, 0, 0.8, 0.05
 local armaimang, armaimangdamp, armaimspd, armaimspddamp, armaimdampfactor, armaimdelta = 350, 1250, 0, 0, 0.4, 0.1
 local pelvisang, pelvisangdamp, pelvisspd, pelvisspddamp, pelvisdampfactor, pelvisdelta = 0, 10, 0, 0, 0.8, 0.15
 local legang, legangdamp, legspd, legspddamp, legsdampfactor, legsdelta = 25, 5, 0, 0, 0.2, 0.2
@@ -2189,66 +1903,7 @@ function ENT:DealWithAnims(isPly, aimingWeapon, noArm, wepHT, isMeleeHT)
         local oldLArm = self:GetLArmDelta()
         local oldRArm = self:GetRArmDelta()
 
-        --own:RemoveFlags(FL_DUCKING)
         own:SetAbsVelocity(rag:GetVelocity())
-        --own:AddFlags(FL_ONGROUND)
-
-        --local newpos, newang = LocalToWorld(Vector(32, 0, -5), Angle(), handpos, handang)
-
-        --own:SetPos(LerpVector(0.98, handpos, tr.HitPos))
-        --own:SetLocalPos(Vector(3, 0,))
-        --[[do
-            local tr = util.TraceLine({
-                start = eyepos,
-                endpos = eyepos + self:GetAimEyeAngles():Forward() * 65536,
-                filter = {own, rag},
-                mask = MASK_SHOT,
-            })
-            self.DebugMdl:SetPos(tr.HitPos)
-        end]]
-        --[[if isPly then
-            own:SetCurrentViewOffset(vector_origin)
-        else
-            own:SetViewOffset(vector_origin)
-        end
-        --own:SetLocalPos(Vector(18, 0, -3))
-        --local hitpos = own:GetEyeTrace().HitPos
-
-        local wep = own:GetActiveWeapon()
-        --own:SetActivity((IsValid(wep) and wepHT == "shotgun") and ACT_MP_CROUCH_IDLE or ACT_MP_STAND_IDLE)
-        --fakePly:SetPos(self:GetPos() + Vector(0, 0, 30))
-        --local _, ang = LocalToWorld(vector_origin, own:EyeAngles(), pelvis:GetPos(), pelvis:GetAngles())
-        
-        --ang:RotateAroundAxis(ang:Forward(), 90)
-        fakePly:SetAngles(aea)
-
-        --fakePly:SetNoDraw(false)
-        --fakePly:SetModel(own:GetModel())
-
-        if isPly or self.UsePlayerAimAnimation then
-            fakePly:SetSequence(fakePly:SelectWeightedSequence(IsValid(wep) and holdTypeActs[wepHT] or ACT_HL2MP_IDLE))
-        else
-            fakePly:SetSequence(own:GetSequence())
-        end
-        --print(own:GetActivity())
-        fakePly:SetCycle(own:GetCycle())
-        --fakePly:FrameAdvance()
-        fakePly:SetPos(self:GetPos())
-
-        if not isPly then
-            fakePly:SetPoseParameter("aim_pitch", own:GetPoseParameter("aim_pitch") or 0)
-            fakePly:SetPoseParameter("aim_yaw", own:GetPoseParameter("aim_yaw") or 0)
-        end]]
-
-
-        --[[local pos, ang = rag:GetBonePosition(rag:LookupBone("ValveBiped.Bip01_R_Hand"))
-
-        pos, ang = LocalToWorld(Vector(8, 0, -3), Angle(), pos, ang)
-        local tr = util.TraceLine({
-            start = pos,
-            endpos = pos + ang:Forward() * 65535,
-            filter = {own, rag}
-        })]]
 
         local fakePly = self.FakePlyModel
 
@@ -2257,34 +1912,6 @@ function ENT:DealWithAnims(isPly, aimingWeapon, noArm, wepHT, isMeleeHT)
         local pos, ang = getPhysBonePosAng(pObjs, "ValveBiped.Bip01_R_Hand")
 
         pos, ang = LocalToWorld(Vector(8, 0, -3), Angle(), pos, ang)
-
-        --eyeang = aea --(own:GetEyeTrace().HitPos - eyepos):Angle()
-        --eyeang:Normalize()
-        --local ea = eyeang:GetNormalized()
-        --self.DebugMdl:SetPos(own:GetEyeTrace().HitPos)
-
-        --print(own:EyePos(), eyepos, eyeang, own:EyeAngles())
-
-        --[[for bName, _ in pairs(upperBodyBones) do
-            
-            local pObj = rag:GetPhysicsObjectNum(rag:TranslateBoneToPhysBone(rag:LookupBone(bName)))
-            pObj:Wake()
-        
-            local pos, ang = self:GetBonePosition(self:LookupBone(bName))
-
-            pObj:ComputeShadowControl({
-                secondstoarrive = 0.01,
-                
-                angle = ang,
-                maxspeed = 0,
-                maxspeeddamp = 0,
-                maxangular = 50 + pObj:GetMass() * 10,
-                maxangulardamp = 10 + pObj:GetMass(),
-                dampfactor = 0.8,
-                delta = 0.1,
-            })
-
-        end]]
         
         local target = fakePly --blacklistedVM[own:GetViewModel():GetModel()] and self or fakePly
         --local angDelta = Angle(-10, 0, 50)
@@ -2413,25 +2040,6 @@ function ENT:DealWithAnims(isPly, aimingWeapon, noArm, wepHT, isMeleeHT)
         
         end
 
-        
-        --[[local animLHandPos, animLHandAng = fakePly:GetBonePosition(fakePly:LookupBone("ValveBiped.Bip01_L_Hand"))
-        local animRHandPos, animRHandAng = fakePly:GetBonePosition(fakePly:LookupBone("ValveBiped.Bip01_R_Hand"))
-
-        local lhToLocalPos, lhToLocalAng = WorldToLocal(animLHandPos, animLHandAng, animRHandPos, animRHandAng)
-        lhToLocalPos, lhToLocalAng = LocalToWorld(lhToLocalPos, lhToLocalAng, rhandpos, rhandang)
-        --rhToLocalPos = rhToLocalPos + aea:Up() * 5
-
-        shadowCtrls["ValveBiped.Bip01_L_Hand"] = {
-            --secondstoarrive = 0.05,
-            pos = lhToLocalPos,
-            angle = lhToLocalAng,
-            maxspeed = 150,
-            maxspeeddamp = 80,
-            maxangular = 700,
-            maxangulardamp = 500,
-            dampfactor = 0.8,
-            delta = 0.05,
-        }]]
 
         -- Sonic.EXE The Distaster 2D Remake.jpg
         -- I mean, 这不灾难吗?
@@ -2641,76 +2249,9 @@ function ENT:DealWithAnims(isPly, aimingWeapon, noArm, wepHT, isMeleeHT)
             shadowCtrls["ValveBiped.Bip01_L_UpperArm"] = nil
             shadowCtrls["ValveBiped.Bip01_L_Forearm"] = nil
 
-            -- 神秘ShadowCTRL实现方式, 总结: 史
-            --[[local _, ang = LocalToWorld(vector_origin, Angle(0, -15, 0), vector_origin, aea)
-            shadowCtrls["ValveBiped.Bip01_L_UpperArm"] = {
-                angle = ang,
-                maxangular = handaimang,
-                maxangulardamp = handaimangdamp,
-                maxspeed = 0,
-                maxspeeddamp = 0,
-                dampfactor = handaimdampfactor,
-                delta = handaimdelta,
-                addMass = handAimUseMass,
-            }
-            _, ang = LocalToWorld(vector_origin, Angle(0, -15, 0), vector_origin, aea)
-            shadowCtrls["ValveBiped.Bip01_L_Forearm"] = {
-                angle = ang,
-                maxangular = handaimang,
-                maxangulardamp = handaimangdamp,
-                maxspeed = 0,
-                maxspeeddamp = 0,
-                dampfactor = handaimdampfactor,
-                delta = handaimdelta,
-                addMass = handAimUseMass,
-            }]]
-            --pObjs["ValveBiped.Bip01_L_UpperArm"].pObj:EnableMotion(!false)
-            --pObjs["ValveBiped.Bip01_L_Forearm"].pObj:EnableMotion(!false)
-
         elseif not IsValid(const) then
             self:SetLArmDelta(math.Approach(self:GetLArmDelta(), lArmDeltaMax, 0.25))
         end
-        --[[local const = self.LHand_Grabbing
-
-        if (in_forward or in_back) and IsValid(const) and self.LHand_GrabbingWorld then
-
-            local tPos = torso:GetPos()
-            local dir = not isPly and (caches.NPC_MoveGoal - eyepos):GetNormalized() or aea:Forward()
-            --shadowCtrls["ValveBiped.Bip01_L_Hand"] = nil
-            --[[shadowCtrls["ValveBiped.Bip01_Spine2"].pos = LerpVector(0.8, tPos, in_forward and lhandpos or lhandpos - dir * 35 * mdlScale)
-            shadowCtrls["ValveBiped.Bip01_Spine2"].maxspeed = torsomovespd
-            shadowCtrls["ValveBiped.Bip01_Spine2"].maxspeeddamp = torsomovespddamp
-            shadowCtrls["ValveBiped.Bip01_Spine2"].delta = torsomovespddelta
-            shadowCtrls["ValveBiped.Bip01_Spine2"].addMass = torsoMoveUseMass]]
-            --local _, ang = LocalToWorld(vector_origin, Angle(0, 90, 0), vector_origin, aea)
-            --[[shadowCtrls["ValveBiped.Bip01_L_UpperArm"] = nil and {
-                angle = ang,
-                maxangular = handaimang * 1000,
-                maxangulardamp = handaimangdamp,
-                maxspeed = 0,
-                maxspeeddamp = 0,
-                dampfactor = handaimdampfactor,
-                delta = handaimdelta * 0.1,
-                addMass = handAimUseMass,
-            }
-            pObjs["ValveBiped.Bip01_L_UpperArm"].pObj:SetAngles(ang)
-            _, ang = LocalToWorld(vector_origin, Angle(0, 90, 0), vector_origin, aea)
-            shadowCtrls["ValveBiped.Bip01_L_Forearm"] = nil and{
-                angle = ang,
-                maxangular = handaimang * 1000,
-                maxangulardamp = handaimangdamp,
-                maxspeed = 0,
-                maxspeeddamp = 0,
-                dampfactor = handaimdampfactor,
-                delta = handaimdelta * 0.1,
-                addMass = handAimUseMass,
-            }]
-
-            --pObjs["ValveBiped.Bip01_L_Forearm"].pObj:SetAngles(ang)
-
-            --print("11111")
-
-        end]]
 
     else
         self:SetLArmDelta(1)
@@ -2794,50 +2335,6 @@ function ENT:DealWithAnims(isPly, aimingWeapon, noArm, wepHT, isMeleeHT)
                 addMass = torsoUseMass,
             }
         end
-
-        --[[local const = self.LHand_Grabbing
-        local constR = self.RHand_Grabbing
-
-        if not shadowCtrls["ValveBiped.Bip01_Spine2"] then
-            shadowCtrls["ValveBiped.Bip01_Spine2"] = {
-                maxspeeddamp = 0,
-                dampfactor = 0.8,
-                addMass = torsoUseMass,
-            }
-        end
-        if in_forward then
-            if IsValid(const) and self.LHand_GrabbingWorld then
-                shadowCtrls["ValveBiped.Bip01_Spine2"].pos = LerpVector(aimingWeapon and 0.7 or 0.5, torso:GetPos(), lhandpos)
-                shadowCtrls["ValveBiped.Bip01_Spine2"].maxspeed = torsomovespd
-                shadowCtrls["ValveBiped.Bip01_Spine2"].maxspeeddamp = torsomovespddamp
-                shadowCtrls["ValveBiped.Bip01_Spine2"].delta = torsomovespddelta
-                shadowCtrls["ValveBiped.Bip01_Spine2"].addMass = torsoMoveUseMass
-            elseif IsValid(constR) and self.RHand_GrabbingWorld then
-                shadowCtrls["ValveBiped.Bip01_Spine2"].pos = LerpVector(aimingWeapon and 0.7 or 0.5, torso:GetPos(), rhandpos)
-                --print(1)
-                shadowCtrls["ValveBiped.Bip01_Spine2"].maxspeed = torsomovespd
-                shadowCtrls["ValveBiped.Bip01_Spine2"].maxspeeddamp = torsomovespddamp
-                shadowCtrls["ValveBiped.Bip01_Spine2"].delta = torsomovespddelta
-                shadowCtrls["ValveBiped.Bip01_Spine2"].addMass = torsoMoveUseMass
-            end
-        elseif in_back then
-            local dir = not isPly and (caches.NPC_MoveGoal - eyepos):GetNormalized() or aea:Forward() --(tPos - lhandpos):GetNormalized()
-            if IsValid(const) and self.LHand_GrabbingWorld then
-                local tPos = torso:GetPos()
-                shadowCtrls["ValveBiped.Bip01_Spine2"].pos = LerpVector(aimingWeapon and 0.7 or 0.5, tPos, lhandpos - dir * 30 * mdlScale)
-                shadowCtrls["ValveBiped.Bip01_Spine2"].maxspeed = torsomovespd
-                shadowCtrls["ValveBiped.Bip01_Spine2"].maxspeeddamp = torsomovespddamp
-                shadowCtrls["ValveBiped.Bip01_Spine2"].delta = torsomovespddelta
-                shadowCtrls["ValveBiped.Bip01_Spine2"].addMass = torsoMoveUseMass
-            elseif IsValid(constR) and self.RHand_GrabbingWorld then
-                local tPos = torso:GetPos()
-                shadowCtrls["ValveBiped.Bip01_Spine2"].pos = LerpVector(aimingWeapon and 0.7 or 0.5, tPos, lhandpos - dir * 30 * mdlScale)
-                shadowCtrls["ValveBiped.Bip01_Spine2"].maxspeed = torsomovespd
-                shadowCtrls["ValveBiped.Bip01_Spine2"].maxspeeddamp = torsomovespddamp
-                shadowCtrls["ValveBiped.Bip01_Spine2"].delta = torsomovespddelta
-                shadowCtrls["ValveBiped.Bip01_Spine2"].addMass = torsoMoveUseMass
-            end
-        end]]
         
     end
 
@@ -3237,8 +2734,6 @@ function ENT:Tick()
            rWinch:Fire("SetSpringConstant", spd * staminaLerp)
            self.RHand_Grabbing_Winch_Forward = true
         elseif in_back then
-            -- 这是他妈的一坨屎, 但是只能这么做(因为反作用力被占了)
-            -- 我觉得每Tick都移除再创造对性能影响太大了, 但是这玩意不能被Licensed.jpg
             if IsValid(rWinch) then
                rWinch:Remove()
             end
