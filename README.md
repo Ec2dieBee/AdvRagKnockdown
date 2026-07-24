@@ -20,3 +20,8 @@ Commits may(mostly) contain Chinese since 2026/7/11 cuz my English is really bad
 All comments in the code are written in Chinese, if it looks like "English", maybe that's an internal meme(i.e. GMos = Garrys Mouse, which comes from(and created by) 9E2)
 
 This addon may be **abandoned** at **ANY TIME** due to my laziness lol
+
+# AI Involvement
+AI only involved in some code quality check(Initiated by me for fun and it DOES help), and all the codes are rather written by me or copied directly from the GMod Wiki Examples(yes the codes listed in each functions)
+AI doesn't write any code here, and I will never let it do so
+if one day I changed my mind, this text will be changed
