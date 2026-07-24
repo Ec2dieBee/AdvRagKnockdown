@@ -65,6 +65,23 @@ local whitelistedBones = {
     ["ValveBiped.Bip01_L_Hand"] = true,
 }
 
+local blackListedHTs = {
+    ["pistol"] = true,
+    ["revolver"] = true,
+    ["ar2"] = true,
+    ["smg1"] = true,
+    ["rpg"] = true,
+    ["crossbow"] = true,
+    ["shotgun"] = true,
+    ["duel"] = true,
+}
+local meleeHTs = {
+    ["melee"] = true,
+    ["melee2"] = true,
+    ["fists"] = true,
+    ["knife"] = true,
+}
+
 -- ToDo: 是否需要将NW换成NW2?
 
 --[[SAVEE_ADVRAGKNOCKDOWN_LIMBS = {
@@ -553,23 +570,6 @@ funchooks.Add("Entity.EyeAngles", "Savee_AdvRagKnockdown_Sync", function(ply, ra
    
 
 end)
-funchooks.Add("Player.SetEyeAngles", "Savee_AdvRagKnockdown_Sync", function(ply, ang, raw, ...)
-
-    --do return __undetoured(ply, ...) end
-    --error(1)
-    --if SERVER then print(1) end
-    if raw or not entTypeCheck(ply) then return __undetoured(ply, ang, raw, ...) end
-
-    local ctrl = getController(ply)
-    if not IsValid(ctrl) then return __undetoured(ply, ang, raw, ...) end
-    ang.r = ctrl:GetAimEyeAngles().r
-    --print(1)
-    ctrl:SetAimEyeAngles(ang)
-    --ctrl.VarCaches["EyeAng"] = ang
-
-    return __undetoured(ply, ang, raw, ...)
-   
-end)
 
 funchooks.Add("Entity.GetVelocity", "Savee_AdvRagKnockdown_Sync", function(ply, ...)
 
@@ -1014,7 +1014,6 @@ if SERVER then
 
     --util.AddNetworkString("Savee_AdvRagKnockdown_UpdateRagLimbs")
     util.AddNetworkString("Savee_AdvRagKnockdown_OperationMsg")
-    util.AddNetworkString("Savee_AdvRagKnockdown_MouseMoveMsg")
 
     local hitgroup_limbs = {0.2, 0.1}
     local hitgroupDmg_limbs = 0.6
@@ -1128,9 +1127,10 @@ if SERVER then
         if not IsValid(oldCtrl) then
             ctrl:SetOwner(ply)
             ctrl:SetPos(ply:GetPos())
-            ctrl:SetAimEyeAngles(ply:EyeAngles())
             ctrl:Spawn()
             ctrl.PreventPhysAttackTill = CurTime() + 0.05
+            -- 防误触
+            ctrl.NextGetUp = CurTime() + 0.5
         end
         --do return end
         --ply:SetNW2Entity("Savee_AdvRagKnockdown_Controller", ent)
@@ -1444,35 +1444,6 @@ function Savee_AdvRagKnockdown_ReplaceRagConstraint(rag, pObjs, bchild, bparent,
         --if not IsValid(ctrl) then return end
     
     end)
-    net.Receive("Savee_AdvRagKnockdown_MouseMoveMsg", function(len, p)
-
-        local ctrl = getController(p)
-        if not IsValid(ctrl) then return end
-        local rag = ctrl:GetRagdoll()
-
-        local consc = ctrl:GetConsciousness()
-
-        local oldAng = ctrl:GetAimEyeAngles()
-        local x, y = net.ReadFloat(), net.ReadFloat()
-        local deltaAng = Angle(y, x) * tickInterval
-
-        local conscLerp = math.ease.OutQuint(consc / 100)
-
-        local refAng = oldAng
-
-        local eyeatt = rag:LookupAttachment("eyes")
-        if cv_kd_ctrl_useheadang:GetBool() and eyeatt ~= 0 then
-            refAng = rag:GetAttachment(eyeatt).Ang
-        end
-
-        -- 在Z-City里吸氰化物吸的
-        oldAng:RotateAroundAxis(refAng:Right(), -deltaAng.p * conscLerp)
-        oldAng:RotateAroundAxis(refAng:Up(), -deltaAng.y * conscLerp)
-
-        --newAng:Normalize()
-        ctrl:SetAimEyeAngles(oldAng)
-    
-    end)
 
     local replaceACTs = {
         --[ACT_HL2MP_GESTURE_RANGE_ATTACK_MELEE] = ACT_HL2MP_GESTURE_RANGE_ATTACK_KNIFE
@@ -1779,22 +1750,6 @@ function Savee_AdvRagKnockdown_ReplaceRagConstraint(rag, pObjs, bchild, bparent,
     local blackListedInputs = {
         IN_SPEED,
     }
-    local blackListedHTs = {
-        ["pistol"] = true,
-        ["revolver"] = true,
-        ["ar2"] = true,
-        ["smg1"] = true,
-        ["rpg"] = true,
-        ["crossbow"] = true,
-        ["shotgun"] = true,
-        ["duel"] = true,
-    }
-    local meleeHTs = {
-        ["melee"] = true,
-        ["melee2"] = true,
-        ["fists"] = true,
-        ["knife"] = true,
-    }
 
     hook.Add("StartCommand", "Savee_AdvRagKnockdown_RagView", function(ply, cmd)
         ---@type Entity
@@ -1808,7 +1763,6 @@ function Savee_AdvRagKnockdown_ReplaceRagConstraint(rag, pObjs, bchild, bparent,
 
         --cmd:RemoveKey()
         --print(cmd:GetViewAngles())
-        --local _, angDelta = WorldToLocal(vector_origin, cmd:GetViewAngles(), vector_origin, ply:EyeAngles())
 
         for key, stat in pairs(ctrl.KeyInputs) do
             if not stat or cmd:KeyDown(key) then continue end
@@ -1942,31 +1896,33 @@ else
         --print(deadRag:GetPhysicsObjectNum(1))
     end)
 
-    local blackListedHTs = {
-        ["pistol"] = true,
-        ["revolver"] = true,
-        ["ar2"] = true,
-        ["smg1"] = true,
-        ["rpg"] = true,
-        ["crossbow"] = true,
-        ["shotgun"] = true,
-        ["duel"] = true,
-    }
-    local meleeHTs = {
-        ["melee"] = true,
-        ["melee2"] = true,
-        ["fists"] = true,
-        ["knife"] = true,
-    }
-
     hook.Add("InputMouseApply", "Savee_AdvRagKnockdown_SendMoveMsg", function(cmd, x, y)
         --print(cmd:GetMouseY(), y)
         local ctrl = getController(LocalPlayer())
         if not IsValid(ctrl) or (x == 0 and y == 0) then return end
-        net.Start("Savee_AdvRagKnockdown_MouseMoveMsg", true)
-        net.WriteFloat(x)
-        net.WriteFloat(y)
-        net.SendToServer()
+        local rag = ctrl:GetRagdoll()
+        local consc = ctrl:GetConsciousness()
+
+        local deltaAng = Angle(y, x) * tickInterval
+
+        local conscLerp = math.ease.OutQuint(consc / 100)
+
+        local oldAng = cmd:GetViewAngles()
+
+        local refAng = oldAng
+
+        local eyeatt = rag:LookupAttachment("eyes")
+        if cv_kd_ctrl_useheadang:GetBool() and eyeatt ~= 0 then
+            refAng = rag:GetAttachment(eyeatt).Ang
+        end
+
+        -- 在Z-City里吸氰化物吸的
+        oldAng:RotateAroundAxis(refAng:Right(), -deltaAng.p * conscLerp)
+        oldAng:RotateAroundAxis(refAng:Up(), -deltaAng.y * conscLerp)
+
+        --newAng:Normalize()
+        cmd:SetViewAngles(oldAng)
+        return true
     end)
 
     local oldAimingState
@@ -1975,6 +1931,19 @@ else
         ---@type Entity
         local ctrl = getController(ply)
         if not IsValid(ctrl) then oldAimingState = false return end
+
+        local consc = ctrl:GetConsciousness()
+
+        local oldAng = ctrl:GetAimEyeAngles()
+        local conscLerp = math.ease.OutQuint(consc / 100)
+
+        if cmd:KeyDown(IN_MOVELEFT) then
+            oldAng = (oldAng - Angle(0, 0, 15) * conscLerp * tickInterval)
+        elseif cmd:KeyDown(IN_MOVERIGHT) then
+            oldAng = (oldAng + Angle(0, 0, 15) * conscLerp * tickInterval)
+        end
+        cmd:SetViewAngles(oldAng)
+
         local aimingBind = clcv_ctrl_nodefkeybind:GetBool() and input.LookupBinding("+advragknockdown_aimweapon") or input.LookupBinding(cvPrefix .. "toggleaimweapon")
 
         local newAimingState = cmd:KeyDown(IN_USE)

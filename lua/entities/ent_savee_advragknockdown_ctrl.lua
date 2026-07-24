@@ -459,6 +459,8 @@ ENT.NextSetRArmDelta = -1
 ENT.CanSetLArmDelta = true
 ENT.CanSetRArmDelta = true
 
+ENT.NextGetUp = -1
+
 --ENT.CustomOwnerRenderOverride = nil
 
 ENT.RagPhysDmgTakenCount = 0
@@ -570,7 +572,6 @@ function ENT:SpawnFunction(ply, tr, ClassName)
     local SpawnPos = tr.HitPos
     
     local ent = ents.Create(ClassName)
-    ent:SetAimEyeAngles(ply:EyeAngles())
     ent:SetOwner(ply)
     ent:SetPos(ply:GetPos())
     ent:Spawn()
@@ -1016,9 +1017,22 @@ function ENT:SetupDataTables()
     self:NetworkVar("Float", 2, "Stamina")
     self:NetworkVar("Float", 3, "Consciousness")
     -- 这里有mRNA, 所以每个从这里拿的角度都得Normalize一遍
-    self:NetworkVar("Angle", 0, "AimEyeAngles")
+    --self:NetworkVar("Angle", 0, "AimEyeAngles")
 end
 
+-- 我猜这是ZCity用的操作方式
+-- 这个方法可以不强奸服务器的Net, 在大型RP服务器里可能会有更好的效果(是的是的是的)
+
+function ENT:GetAimEyeAngles()
+    local own = self:GetOwner()
+    if not IsValid(own) then return angle_zero end
+    return own:EyeAngles(true)
+end
+function ENT:SetAimEyeAngles(ang)
+    local own = self:GetOwner()
+    if not IsValid(own) then return end
+    own:SetEyeAngles(ang, true)
+end
 
 function ENT:AddKeyInput(key)
     self.KeyInputs[key] = true
@@ -1115,6 +1129,8 @@ function ENT:TryGetUp(animTbl, forced)
 end
 
 function ENT:ShouldGetUp()
+
+    if self.NextGetUp > CurTime() then return false end
 
     local own = self:GetOwner()
     local rag = self:GetRagdoll()
@@ -1398,9 +1414,6 @@ function ENT:Think()
             --print(1)
         end
 
-    else
-        local av = own:GetAimVector()
-        own:SetEyeAngles(av:Angle(), true)
     end
 
 
@@ -1543,10 +1556,10 @@ function ENT:Think()
 
         if cyc >= animData.Recover[2] then
             local tr = util.TraceEntityHull({
-                start = pelvisPos + Vector(0, 0, 2),
+                start = pelvisPos + Vector(0, 0, 5),
                 endpos = pelvisPos - Vector(0, 0, 100),
                 filter = {self, rag, own},
-                mask = MASK_SHOT_HULL,
+                mask = MASK_ALL,
             }, own)
 
             --print(tr.Entity)
@@ -1701,11 +1714,11 @@ end
 
 -- 这样你就不必来来回回
 
-local torsoang, torsoangdamp, torsospd, torsospddamp, torsodampfactor, torsodelta = 650, 450, 0, 0, 0.2, 0.07
+local torsoang, torsoangdamp, torsospd, torsospddamp, torsodampfactor, torsodelta = 650, 450, 0, 0, 0.2, isSP and 0.07 or 0.07
 --local torsomovespd, torsomovespddamp, torsomovespddelta = 450, 450, 0.2
 local headang, headangdamp, headspd, headspddamp, headdampfactor, headdelta = 220, 200, 0, 0, 0.5, 0.01
 local handang, handangdamp, handspd, handspddamp, handdampfactor, handdelta = 265, 265, 635, 235, 0.8, 0.2
-local handaimang, handaimangdamp, handaimspd, handaimspddamp, handaimdampfactor, handaimdelta = 250, 150, 2, 0, 0.8, 0.05
+local handaimang, handaimangdamp, handaimspd, handaimspddamp, handaimdampfactor, handaimdelta = 250, 150, 2, 0, 0.8, isSP and 0.05 or 0.08
 local armaimang, armaimangdamp, armaimspd, armaimspddamp, armaimdampfactor, armaimdelta = 350, 1250, 0, 0, 0.4, 0.1
 local pelvisang, pelvisangdamp, pelvisspd, pelvisspddamp, pelvisdampfactor, pelvisdelta = 0, 10, 0, 0, 0.8, 0.15
 local legang, legangdamp, legspd, legspddamp, legsdampfactor, legsdelta = 25, 5, 0, 0, 0.2, 0.2
@@ -2489,16 +2502,6 @@ function ENT:Tick()
         self:DealWithAnims(isPly, aimingWeapon, noArm, wepHT, isMeleeHT)
 
         self.NextCalcAnim = ct + (isPly and 0.1 or 0.2)
-    end
-
-
-    -- 操作
-    if self:HasKeyInput(IN_MOVELEFT) then
-        --pelvis:ApplyTorqueCenter(pelvis:GetAngles():Right() * -200)
-        self:SetAimEyeAngles(aea - Angle(0, 0, 1.5) * conscLerp)
-    elseif self:HasKeyInput(IN_MOVERIGHT) then
-        --pelvis:ApplyTorqueCenter(pelvis:GetAngles():Right() * 200)
-        self:SetAimEyeAngles(aea + Angle(0, 0, 1.5) * conscLerp)
     end
 
     --aea.r = pelvis:GetAngles().z
