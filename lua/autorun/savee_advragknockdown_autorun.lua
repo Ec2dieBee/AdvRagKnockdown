@@ -52,9 +52,9 @@ local clcv_ctrl_altaimkey = CreateClientConVar(cvPrefix .. "cl_control_altaimkey
 local clcv_ctrl_aim = CreateClientConVar(cvPrefix .. "cl_control_autoaim", "0", true, true, "[仅自定义按键可用时] 击倒时默认开启瞄准(0: 关闭, 1: 仅主动击倒, 2: 任何情况下被击倒(需要服务器打开相关设置!))", 0, 2)
 --local clcv_perf_usecalcviewmodelview = CreateClientConVar(cvPrefix .. "cl_performance_luacode_usecalcviewmodelview", "1", true, true, "[绘制][代码相关] 是否使用武器的CalcViewModelView, 可能有神秘小Bug", 0, 1)
 
-local clcv_ctrl_altaimkey = clcv_ctrl_altaimkey:GetBool()
+local var_clcv_ctrl_altaimkey = clcv_ctrl_altaimkey:GetBool()
 cvars.AddChangeCallback(cvPrefix .. "cl_control_altaimkey", function()
-    clcv_ctrl_altaimkey = clcv_ctrl_altaimkey:GetBool()
+    var_clcv_ctrl_altaimkey = var_clcv_ctrl_altaimkey:GetBool()
 end)
 
 --local entMeta = FindMetaTable("Entity")
