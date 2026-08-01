@@ -1926,9 +1926,9 @@ else
         if ctrl:GetParent() ~= ctrl:GetRagdoll() then
             oldAng.r = math.Approach(oldAng.r, 0, 15)
         elseif cmd:KeyDown(IN_MOVELEFT) then
-            oldAng = (oldAng - Angle(0, 0, 15) * conscLerp * tickInterval)
+            oldAng = (oldAng - Angle(0, 0, 90) * conscLerp * FrameTime())
         elseif cmd:KeyDown(IN_MOVERIGHT) then
-            oldAng = (oldAng + Angle(0, 0, 15) * conscLerp * tickInterval)
+            oldAng = (oldAng + Angle(0, 0, 90) * conscLerp * FrameTime())
         end
         cmd:SetViewAngles(oldAng)
 
