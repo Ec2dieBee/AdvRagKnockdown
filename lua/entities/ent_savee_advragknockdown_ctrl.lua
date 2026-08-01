@@ -3138,7 +3138,7 @@ function ENT:CalcView(ply, pos, ang, fov)
     --print(ply:GetEyeTrace().HitPos, ply:EyeAngles(), tr.HitPos, ea)
 
     self.EyeAng = ang
-    --self.LastEyeAng = LerpAngle(math.min(1, FrameTime() * 65), self.LastEyeAng or self:GetAimEyeAngles(), ang)
+    self.LastEyeAng = LerpAngle(math.min(1, FrameTime() * 65), self.LastEyeAng or self:GetAimEyeAngles(), ang)
 
     shouldDrawVM = not noArm and self:GetAimingWeapon()
     --ply:SetViewPunchAngles(Angle())
@@ -3149,7 +3149,7 @@ function ENT:CalcView(ply, pos, ang, fov)
     --print("HYW")
     local view = {
         origin = pos,
-        angles = ang,
+        angles = self.LastEyeAng,
         fov = fov,
         drawviewer = not shouldDrawVM,
     }
@@ -3207,7 +3207,7 @@ function ENT:CalcViewModelView(wep, vm, oldPos, oldAng, pos, ang)
 
     local lpos, lang = WorldToLocal(pos, ang, oldPos, oldAng)
 
-    local lea = self:GetAimEyeAngles()
+    local lea = self.LastEyeAng  --self:GetAimEyeAngles()
     local aeyeang = Angle(lea.x, lea.y, lea.r)
     --aeyeang:Normalize()
 
