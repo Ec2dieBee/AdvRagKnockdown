@@ -1563,9 +1563,11 @@ function ENT:Think()
         --print((64 - tr.HitPos:Distance(eyepos)) / 64)
         self:SetCachedVar("NearWalling", math.Clamp((dist - tr.HitPos:Distance(eyepos)) / dist, 0.1, 1.1), 0.2)
     end
+
+    -- 头: 哈哈没想到吧哥是甲级战犯
     if not self:ShouldUseCachedVar("HeadWalling") then
         local hullsize = Vector(5, 5, 5) / mdlScale
-        local dist = 8 * mdlScale
+        local dist = 32 * mdlScale
         local pos, ang = getPhysBonePosAng(pObjs, "ValveBiped.Bip01_Head1")
         local tr = util.TraceHull({
             start = pos,
@@ -1574,8 +1576,8 @@ function ENT:Think()
             mins = hullsize,
             filter = {own, rag},
         })
-        local var = math.Clamp((dist - tr.HitPos:Distance(pos)) / dist, 0, 1.1)
-        print(var, tr.Entity, tr.HitWorld)
+        local var = math.Clamp((dist - tr.HitPos:Distance(pos)) / dist, 0, 1.1) * 2
+        --print(var, tr.Entity, tr.HitWorld)
         self:SetCachedVar("HeadWalling", var, 0.2)
     end
 
@@ -2000,7 +2002,7 @@ function ENT:DealWithAnims(isPly, aimingWeapon, noArm, wepHT, isMeleeHT)
             maxspeed = headspd,
             maxspeeddamp = headspddamp,
             maxangular = headang * (1 - self:GetCachedVar("HeadWalling")),
-            maxangulardamp = headangdamp,
+            maxangulardamp = headangdamp * (1 - self:GetCachedVar("HeadWalling")),
             dampfactor = headdampfactor,
             delta = headdelta,
             addMass = headUseMass,
@@ -3225,7 +3227,7 @@ function ENT:CalcViewModelView(wep, vm, oldPos, oldAng, pos, ang)
     local wep = ply:GetActiveWeapon()
 
     if IsValid(wep) then
-        if wep.CalcViewModelView and getCV(cvPrefix .. "cl_performance_luacode_usecalcviewmodelview", "Bool") then 
+        if wep.CalcViewModelView and getCV("cl_performance_luacode_usecalcviewmodelview", "Bool") then 
             pos, ang = wep:CalcViewModelView(vm, pos, ang, pos, ang)
         elseif wep.GetViewModelPosition then 
             pos, ang = wep:GetViewModelPosition(pos, ang) 
