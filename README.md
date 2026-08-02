@@ -12,7 +12,8 @@ NPCs Can Be knockdowned
 ---
 # Credits
 1. **Devs of Z-City** - **Main Inspiration** of this addon
-2. **Savee14702** - The dumb who tried write this all his own without using ANY of Z-City's code(seems I did that, wow)
+2. **TriggerMiku** - Playtester, some useful advices on code
+3. **Savee14702** - The dumb who tried write this all his own without using ANY of Z-City's code(seems I did that, wow)
 
 ---
 # And also
