@@ -17,15 +17,15 @@
 -- ToDo: 加个装死检测, 用你从其它代码学到的"Cache"
 ---警告! 这并不意味着你可以躲在电视后面听The Great Punishment然后拿霰弹枪射击**某个很大的猫科生物**
 -- Done: 引入类似Z-City的健康系统, (意识(能否控制武器/控制力), 体力(最大控制力), 我猜这两个够用了(坐等其他人搬运Z-City健康系统.jpg))
--- Untested: 让Miku可以舒适的射击(G🐀神秘更新让JiggleBones强制替代了PhysBone)
+-- Done: 让Miku可以舒适的射击(G🐀神秘更新让JiggleBones强制替代了PhysBone 26/8/2 不知道怎么又改回去了)
 -- ToDo: 加个切换伸手的可选项(CL/SV)
+AddCSLuaFile()
 
 local cvPrefix = "savee_advragknockdown_"
 local isSP = game.SinglePlayer()
 
 local vector_origin = Vector()
 
-AddCSLuaFile()
 local _
 local tickInterval = engine.TickInterval()
 
@@ -249,6 +249,28 @@ local deltaedHT = {
     ["shotgun"] = true,
 }
 
+local actIndex = {
+	["pistol"]		= ACT_HL2MP_IDLE_PISTOL,
+	["smg"]			= ACT_HL2MP_IDLE_SMG1,
+	["grenade"]		= ACT_HL2MP_IDLE_GRENADE,
+	["ar2"]			= ACT_HL2MP_IDLE_AR2,
+	["shotgun"]		= ACT_HL2MP_IDLE_SHOTGUN,
+	["rpg"]			= ACT_HL2MP_IDLE_RPG,
+	["physgun"]		= ACT_HL2MP_IDLE_PHYSGUN,
+	["crossbow"]	= ACT_HL2MP_IDLE_CROSSBOW,
+	["melee"]		= ACT_HL2MP_IDLE_MELEE,
+	["slam"]		= ACT_HL2MP_IDLE_SLAM,
+	["normal"]		= ACT_HL2MP_IDLE,
+	["fist"]		= ACT_HL2MP_IDLE_FIST,
+	["melee2"]		= ACT_HL2MP_IDLE_MELEE2,
+	["passive"]		= ACT_HL2MP_IDLE_PASSIVE,
+	["knife"]		= ACT_HL2MP_IDLE_KNIFE,
+	["duel"]		= ACT_HL2MP_IDLE_DUEL,
+	["camera"]		= ACT_HL2MP_IDLE_CAMERA,
+	["magic"]		= ACT_HL2MP_IDLE_MAGIC,
+	["revolver"]	= ACT_HL2MP_IDLE_REVOLVER
+}
+
 local noCollides = {
     "ValveBiped.Bip01_L_Hand",
     "ValveBiped.Bip01_L_Forearm",
@@ -261,6 +283,19 @@ local noCollides = {
 }
 
 local hitgroup_limbs = {0.2, 0.1}
+local hitgroupDmg_limbs = 0.5
+
+local hitGroupPhysicsDmgMuls = {
+    [HITGROUP_GENERIC] = 1,
+    [HITGROUP_HEAD] = 1.25,
+    [HITGROUP_CHEST] = 1,
+    [HITGROUP_STOMACH] = 0.8,
+    [HITGROUP_GEAR] = 0,
+    [HITGROUP_LEFTARM] = hitgroupDmg_limbs,
+    [HITGROUP_RIGHTARM] = hitgroupDmg_limbs,
+    [HITGROUP_LEFTLEG] = hitgroupDmg_limbs,
+    [HITGROUP_RIGHTLEG] = hitgroupDmg_limbs,
+}
 
 local hitGroupMuls = {
     [HITGROUP_GENERIC] = {0.5, 1},
@@ -497,6 +532,7 @@ ENT.RagPObjs = {}
 ENT.RagLastModel = ""
 
 ENT.GettingUp = false
+ENT.GettingUp_Crouch = false
 ENT.GettingUp_SyncingToOwner = false
 ENT.GettingUp_FaceAng = Angle()
 
@@ -881,7 +917,7 @@ function ENT:Initialize()
         if not IsValid(self) or not IsValid(own) then return end
 
         local ct = CurTime()
-        if ct + data.DeltaTime <= self.PreventPhysAttackTill then return end
+        --if ct + data.DeltaTime <= self.PreventPhysAttackTill then return end
 
         -- 我不认为你高速创到一个灰尘会导致你昏厥, 我觉得该昏的是灰尘
         local pObj = data.PhysObject
@@ -895,18 +931,38 @@ function ENT:Initialize()
 
         --print(spd * mul, mul)
 
-        spd = math.max(spd * mul - (official and (self.GettingUp and 800 or 500) or 1200) / math.max(1, mdlScale), 0)
-
+        spd = math.max(spd * mul - (official and (self.GettingUp and 1000 or 800) or 1200) / math.max(1, mdlScale), 0)
         --print(spd)
         if spd == 0 or data.HitEntity == rag then return end
 
+        local tr = util.TraceHull({
+            start = data.HitPos,
+            endpos = data.HitPos,
+            whitelist = true,
+            filter = rag,
+            getRaw = true,
+            mask = MASK_ALL,
+            mins = Vector(-2, -2, -2),
+            maxs = Vector(2, 2, 2),
+        })
+        local bone = rag:TranslatePhysBoneToBone(tr.PhysicsBone)
+        local hitGroup = rag.Savee_AdvRagKnockdown_HitGroups[bone]
+        local hgMul = hitGroupPhysicsDmgMuls[hitGroup or 0]
+
         local ent = data.HitEntity
 
-        local dmg = spd / 10 - pObj:GetMass()
+        local dmg = (spd / 10 - pObj:GetMass()) * math.min(data.DeltaTime, 1)
+        if ent:GetClass() == "func_breakable_surf" then 
+            dmg = dmg / 10 
+        else
+            dmg = dmg * 4
+        end
+
+        --print(hitGroup)
 
         local di = DamageInfo()
         self.DI_MarkedAsTaken[di] = true
-        di:SetDamage(dmg * (official and 1 or 0.2))
+        di:SetDamage(dmg * (official and 1 or 0.2) * hgMul)
         di:SetDamageType(DMG_CRUSH)
 
         local pAtk = ent:GetPhysicsAttacker()
@@ -915,7 +971,7 @@ function ENT:Initialize()
 
         --print(data.HitEntity)
         own:TakeDamageInfo(di, true)
-        self.PreventPhysAttackTill = ct + tickInterval * 2
+        --self.PreventPhysAttackTill = ct + tickInterval * 2
     
     end)
 
@@ -1068,7 +1124,6 @@ end
 
 function ENT:TryGetUp(animTbl, forced)
     --do return false end
-    -- 在这插入检测
     if not forced and not self:ShouldGetUp() then return end
 
     if not animTbl then
@@ -1188,7 +1243,9 @@ function ENT:RestorePlayerData()
     --own:RemoveFlags(FL_DUCKING)
     local offset = self.m_vOwnViewOffset
     own:SetViewOffset(offset)
-    if own:IsPlayer() then own:SetCurrentViewOffset(self.m_vOwnViewOffset) end
+    if own:IsPlayer() then 
+        own:SetCurrentViewOffset(offset)
+    end
     
     own:SetMoveType(self.m_iOwnMoveType or MOVETYPE_STEP)
     own:SetCollisionGroup(self.m_iOwnCollisionGroup or COLLISION_GROUP_PLAYER)
@@ -1201,17 +1258,16 @@ function ENT:OnRemove()
 
     self.Removing = true
     local rag = self:GetRagdoll()
-    
+    local own = self:GetOwner()
+
+    SAVEE_ADVRAGKNOCKDOWN_CONTROLLERS[self] = nil
+
     if CLIENT then 
         return
     end
 
-    SAVEE_ADVRAGKNOCKDOWN_CONTROLLERS[self] = nil
-
-    local own = self:GetOwner()
     --print(rag)
     if IsValid(own) then
-
         if own:IsPlayer() then
             local ea = own:EyeAngles(true)
             ea.r = 0
@@ -1229,6 +1285,12 @@ function ENT:OnRemove()
 
         -- 年度最傻逼问题, 神他妈必须在移除的时候设置才给弄
         if newPos then
+            if own:IsPlayer() and self:HasKeyInput(IN_DUCK) then
+                local _, standMax = own:GetHull()
+                local _, duckMax = own:GetHullDuck()
+                newPos.z = newPos.z - (standMax.z - duckMax.z)
+            end
+
             own:SetPos(newPos)
             own:SetLocalVelocity(vector_origin)
         end
@@ -1598,9 +1660,10 @@ function ENT:Think()
 
         --local myMdl, animMdl = self:GetModel(), animData.Model
         local cyc = anim:GetCycle()
+        local recover = self.GettingUp_Crouch and animData.Recover_Duck or animData.Recover
         --print(cyc, animData.Recover[2])
 
-        if cyc >= animData.Recover[2] then
+        if cyc >= recover[2] then
             local tr = util.TraceEntityHull({
                 start = pelvisPos + Vector(0, 0, 5),
                 endpos = pelvisPos - Vector(0, 0, 100),
@@ -1625,12 +1688,7 @@ function ENT:Think()
                 own:SetPos(pos, true)
             end)
             return
-        elseif cyc >= animData.Recover[1] and self:GetParent() == rag then
-
-            local ang = self:GetAimEyeAngles()
-            ang:Normalize()
-            ang.z = 0
-            ang.p = 0
+        elseif cyc >= recover[1] and self:GetParent() == rag then
 
             local tr = util.TraceLine({
                 start = pelvisPos + Vector(0, 0, 2),
@@ -1640,11 +1698,17 @@ function ENT:Think()
 
             --print(self, "我快起来了", own, rag)
 
+            local trans = wep.TranslateActivity
+            local selectedACT = IsValid(wep) and actIndex[wep:GetHoldType()] or ACT_HL2MP_IDLE
+            local rawACT = self.GettingUp_Crouch and ACT_MP_CROUCH_IDLE or ACT_MP_STAND_IDLE
+            -- weapon_base/sh_anims.lua
+            if self.GettingUp_Crouch then selectedACT = selectedACT + 3 end
+
             self:SetParent(nil)
             self:SetPos(tr.HitPos + Vector(0, 0, 0.2))
-            self:SetAngles(ang)
+            self:SetAngles(angle_zero)
             self:SetModel(own:GetModel())
-            self:SetSequence(own:GetSequence())
+            self:SetSequence(own:SelectWeightedSequence(isfunction(trans) and trans(wep, rawACT) or selectedACT))
             self:SetPlaybackRate(own:GetPlaybackRate())
             self:SetCycle(own:GetCycle())
             self:SetPoseParameter("aim_pitch", own:GetPoseParameter("aim_pitch"))
@@ -1652,7 +1716,7 @@ function ENT:Think()
             self.GettingUp_SyncingToOwner = true
             --own:SetAngles(self.GettingUp_FaceAng)
             --self:SetNoDraw(false)
-        elseif cyc >= animData.Recover[1] then
+        elseif cyc >= recover[1] then
             self:SetPoseParameter("aim_pitch", own:GetPoseParameter("aim_pitch"))
             self:SetPoseParameter("aim_yaw", own:GetPoseParameter("aim_yaw"))
         end
@@ -1759,7 +1823,7 @@ local handang, handangdamp, handspd, handspddamp, handdampfactor, handdelta = 25
 local handaimang, handaimangdamp, handaimspd, handaimspddamp, handaimdampfactor, handaimdelta = 250, 150, 0, 0, 0.8, isSP and 0.05 or 0.08
 local armaimang, armaimangdamp, armaimspd, armaimspddamp, armaimdampfactor, armaimdelta = 350, 1250, 0, 0, 0.4, 0.1
 local pelvisang, pelvisangdamp, pelvisspd, pelvisspddamp, pelvisdampfactor, pelvisdelta = 0, 10, 0, 0, 0.8, 0.15
-local legang, legangdamp, legspd, legspddamp, legsdampfactor, legsdelta = 25, 5, 0, 0, 0.2, 0.2
+local legang, legangdamp, legspd, legspddamp, legsdampfactor, legsdelta = 25, 15, 0, 0, 0.5, 0.2
 
 -- 为了避免强奸你的性能 我们制作了一个Tick 用以执行那些*不得不*每Tick执行的操作
 -- 快感谢Tick吧
@@ -1785,6 +1849,8 @@ function ENT:DealWithAnims(isPly, aimingWeapon, noArm, wepHT, isMeleeHT)
     ---@type Entity
     local rag = self:GetRagdoll()
 
+    local wep = own:GetActiveWeapon()
+
     --cloneAtoB(own, rag, true)
     --rag:SetFriction(10)
 
@@ -1800,6 +1866,35 @@ function ENT:DealWithAnims(isPly, aimingWeapon, noArm, wepHT, isMeleeHT)
     local in_forward = not isPly and caches.NPC_HasMoveGoal or self:HasKeyInput(IN_FORWARD)
     --local in_back = self:HasKeyInput(IN_BACK)
     local in_duck = self:HasKeyInput(IN_DUCK)
+
+    if self.GettingUp then
+        local oldState = self.GettingUp_Crouch
+        if oldState ~= in_duck then
+            local anim = self.GetupAnimModel
+            local animData = self.CurGetUpAnimData
+
+            local cyc = anim:GetCycle()
+            local recover = in_duck and animData.Recover_Duck or animData.Recover
+
+            anim:SetCycle(math.min(cyc, recover[1]))
+
+            local sync = cyc >= recover[1]
+            self.GettingUp_SyncingToOwner = sync
+
+            if sync then
+                local trans = wep.TranslateActivity
+                local selectedACT = IsValid(wep) and actIndex[wep:GetHoldType()] or ACT_HL2MP_IDLE
+                local rawACT = in_duck and ACT_MP_CROUCH_IDLE or ACT_MP_STAND_IDLE
+    
+                if in_duck then selectedACT = selectedACT + 3 end
+
+                self:SetSequence(own:SelectWeightedSequence(isfunction(trans) and trans(wep, rawACT) or selectedACT))
+            end
+        end
+        self.GettingUp_Crouch = in_duck
+        
+        in_duck = false
+    end
 
     local pObjs = self.RagPObjs
     local shadowCtrls = {}
@@ -1956,7 +2051,7 @@ function ENT:DealWithAnims(isPly, aimingWeapon, noArm, wepHT, isMeleeHT)
     local ragHeadPos, ragHeadAng = getPhysBonePosAng(pObjs, "ValveBiped.Bip01_Head1")
     local ragLUArmPos, ragLUArmAng = getPhysBonePosAng(pObjs, "ValveBiped.Bip01_L_UpperArm")
     local ragRUArmPos, ragRUArmAng = getPhysBonePosAng(pObjs, "ValveBiped.Bip01_R_UpperArm")
-    local animHeadPos, animHeadAng = fakePly:GetBonePosition(fakePly:LookupBone("ValveBiped.Bip01_Head1"))
+    local animHeadPos, animHeadAng = fakePly:GetBonePosition(fakePly:LookupBone("ValveBiped.Bip01_Head1") or 0)
     local animLHandPos, animLHandAng = fakePly:GetBonePosition(fakePly:LookupBone("ValveBiped.Bip01_L_Hand"))
     local animRHandPos, animRHandAng = fakePly:GetBonePosition(fakePly:LookupBone("ValveBiped.Bip01_R_Hand"))
 
@@ -2122,7 +2217,7 @@ function ENT:DealWithAnims(isPly, aimingWeapon, noArm, wepHT, isMeleeHT)
                 -- 歪打正着
                 local wepDelta = (aimPosDelta[wepHT] or twoArmAimDelta)
                 local delta = aea:Forward() * wepDelta.x * nearwallMul * (isPly and 1 or deltaedHT[wepHT] and 1.2 or 1.5) + aea:Right() * wepDelta.y * (isPly and 1 or wepDelta == twoArmAimDelta and 2 or 1) + aea:Up() * wepDelta.z * (isPly and 1 or 1)
-                delta = delta * mdlScale
+                --delta = delta * mdlScale
                 rhToLocalPos = eyepos + delta
                 --rhToLocalPos = eyepos + aea:Forward() * wepDelta.x + aea:Right() * wepDelta.y + aea:Up() * wepDelta.z
             end
@@ -2264,7 +2359,7 @@ function ENT:DealWithAnims(isPly, aimingWeapon, noArm, wepHT, isMeleeHT)
             --self.DebugMdl:SetPos(handpos + handang:Forward() * 7 + handang:Right() * 7)
 
             local dir = not isPly and (caches.NPC_MoveGoal - eyepos):GetNormalized() or aea:Forward()
-            local ang = Angle(-25, 0, 90)
+            local ang = Angle(-5, 0, 90)
             local targetPos = eyepos + (dir * 30 - eyeang:Up() * (isPly and 3 or 10 + caches.NPC_MoveGoal:Distance(eyepos) / 10)) * mdlScale
 
             if not IsValid(self.LHand_Grabbing) then
@@ -2312,7 +2407,7 @@ function ENT:DealWithAnims(isPly, aimingWeapon, noArm, wepHT, isMeleeHT)
         self:SetLArmDelta(1)
         self:SetRArmDelta(1)
 
-        local lhand = noArm and self:HasKeyInput(IN_ATTACK) or in_forward
+        local lhand = not noArm and in_forward or self:HasKeyInput(IN_ATTACK)
         local rhand = self:HasKeyInput(IN_ATTACK2) or (not isPly and in_forward)
 
         local forward, right = aea:Forward() * 30 * mdlScale, aea:Right() * 5 * mdlScale
@@ -2323,7 +2418,7 @@ function ENT:DealWithAnims(isPly, aimingWeapon, noArm, wepHT, isMeleeHT)
         end
         if lhand then
             self:SetLArmDelta(math.Approach(self:GetLArmDelta(), 1, 0.2))
-            local ang = Angle(-25, 0, 90)
+            local ang = Angle(-5, 0, 90)
 
             if not IsValid(self.LHand_Grabbing) then
                 local angLUpperArm, angLForeArm = calcBasicArmIK(ragLUArmPos, pos - right, 0, Angle(0, 0, -90), aea)
@@ -2363,7 +2458,7 @@ function ENT:DealWithAnims(isPly, aimingWeapon, noArm, wepHT, isMeleeHT)
             }
         end
         if rhand then
-            local ang = Angle(-25, 0, (noArm or isMeleeHT) and 90 or 180)
+            local ang = Angle(-5, 0, (noArm or isMeleeHT) and 90 or 180)
             
             if not IsValid(self.RHand_Grabbing) then
                 local angRUpperArm, angRForeArm = calcBasicArmIK(ragRUArmPos, pos + right, 0, Angle(0, 0, -90), aea)
@@ -2448,7 +2543,7 @@ function ENT:DealWithAnims(isPly, aimingWeapon, noArm, wepHT, isMeleeHT)
         elseif self.LowPose then --IsValid(wep) and wep.ARC9 and wep:GetBipod() then
             ang:RotateAroundAxis(Vector(0, -1, 0), -30)
         end
-        --ang:RotateAroundAxis(aea:Right(), -25)
+        --ang:RotateAroundAxis(aea:Right(), -5)
     end
 
     self.ShadowCtrlData = shadowCtrls
@@ -2474,7 +2569,7 @@ function ENT:Tick()
     local rag = self:GetRagdoll()
     local mdlScale = rag.Savee_AdvRagKnockdown_ModelScale
 
-    if self.Initialized and own:GetParent() ~= rag then
+    if self.Initialized and (not self.GettingUp_SyncingToOwner and own:GetParent() ~= rag) then
         self:RemoveSelf()
         return
     elseif not own:IsEffectActive(EF_BONEMERGE) then
@@ -2524,8 +2619,8 @@ function ENT:Tick()
     end
 
     if not isPly then
-        --eyepos = eyepos - own:GetInternalVariable("m_HackedGunPos") or vector_origin
-        own:SetPos(rag:GetPos(), true)
+        eyepos = eyepos - own:GetInternalVariable("m_HackedGunPos") or vector_origin
+        own:SetPos(eyepos, true)
     else
         own:SetPos(eyepos + (aea:Forward() * 8) * math.max(1, mdlScale), true)
     end
@@ -2660,7 +2755,7 @@ function ENT:Tick()
         -- 我没有物理思维, 所以让引擎做这玩意, which 协助定位这个傻逼Prop
         -- 绳子可以拿去搞捆绑.jpg
 
-        local wtl = WorldToLocal(grabtr.HitPos, angle_zero, pObj:GetPos(), pObj:GetAngles())
+        local wtl = WorldToLocal(grabtr.HitPos, angle_zero, IsValid(pObj) and pObj:GetPos() or ent:GetPos(), IsValid(pObj) and pObj:GetAngles() or ent:GetAngles())
 
         -- 弹性绳索, 很适合模拟一个人是怎么抓东西的, 比绳子好114倍, 比绞盘好514倍
         --self.LHand_Grabbing_Winch = constraint.Elastic(rag, ent, pObjs["ValveBiped.Bip01_Spine2"].id, pObjID, Vector(4, 2, 2) * mdlScale, wtl, 20000, 50, 0.2, "", 3, false, Color(255, 255, 255))
@@ -2724,7 +2819,7 @@ function ENT:Tick()
         --print(self.RHand_Grabbing)
         self.RHand_GrabbingWorld = checkCanPull(entR)
 
-        local wtl = WorldToLocal(grabtrR.HitPos, angle_zero, pObj:GetPos(), pObj:GetAngles())
+        local wtl = WorldToLocal(grabtrR.HitPos, angle_zero, IsValid(pObj) and pObj:GetPos() or entR:GetPos(), IsValid(pObj) and pObj:GetAngles() or entR:GetAngles())
 
         self.RHand_GrabbingData = {
             ent = entR, 
@@ -2753,28 +2848,28 @@ function ENT:Tick()
 
     if IsValid(const) then
         if in_forward then
-           if not self.LHand_Grabbing_Winch_Forward and IsValid(lWinch) then
-               lWinch:Remove()
-           end
+            if not self.LHand_Grabbing_Winch_Forward and IsValid(lWinch) then
+                lWinch:Remove()
+            end
 
-           local spd = self.LHand_GrabbingWorld and 4500 or 2000
+            local spd = self.LHand_GrabbingWorld and 4500 or 2000
 
-           if not IsValid(lWinch) then
+            if not IsValid(lWinch) then
                 local data = self.LHand_GrabbingData
                 -- Z-City的参数(给我的感觉), 和我进去爬的时候的手部位置几乎一致
                 lWinch = constraint.Elastic(rag, data.ent, pObjs["ValveBiped.Bip01_Spine2"].id, data.pObjID, (Vector(-6, 6, 1) - aea:Forward()), data.wtlPos, spd, 250, 1, "", 0, true, Color(255, 255, 255, 0))
                 if lWinch then 
                     const:DeleteOnRemove(lWinch)
                 end
-
+                
                 self.LHand_Grabbing_Winch = lWinch
-           end
+            end
 
-           if not lWinch then return end
-           
-           lWinch:Fire("SetSpringLength", 1)
-           lWinch:Fire("SetSpringConstant", spd * staminaLerp)
-           self.LHand_Grabbing_Winch_Forward = true
+            if lWinch then
+                lWinch:Fire("SetSpringLength", 1)
+                lWinch:Fire("SetSpringConstant", spd * staminaLerp)
+                self.LHand_Grabbing_Winch_Forward = true
+            end
         elseif in_back then
             -- 这是他妈的一坨屎, 但是只能这么做(因为反作用力被占了况且这玩意已经半成形了(而且更稳定))
             -- 我觉得每Tick都移除再创造对性能影响太大了, 但是这玩意不能被Licensed.jpg
@@ -2796,36 +2891,35 @@ function ENT:Tick()
 
             self.LHand_Grabbing_Winch = lWinch
 
-            if not lWinch then return end
-
-            lWinch:Fire("SetSpringLength", 0.1)
-            self.LHand_Grabbing_Winch_Forward = false
+            if lWinch then
+                lWinch:Fire("SetSpringLength", 0.1)
+                self.LHand_Grabbing_Winch_Forward = false
+            end
         elseif IsValid(lWinch) then 
             lWinch:Remove()
         end
     end
     if IsValid(constR) then
         if in_forward then
-           if not self.RHand_Grabbing_Winch_Forward and IsValid(rWinch) then
-               rWinch:Remove()
-           end
+            if not self.RHand_Grabbing_Winch_Forward and IsValid(rWinch) then
+                rWinch:Remove()
+            end
 
-           local spd = self.RHand_GrabbingWorld and 4500 or 2000
+            local spd = self.RHand_GrabbingWorld and 4500 or 2000
 
-           if not IsValid(rWinch) then
-               local data = self.RHand_GrabbingData
-               -- Z-City的参数(给我的感觉), 和我进去爬的时候的手部位置几乎一致
-               rWinch = constraint.Elastic(rag, data.ent, pObjs["ValveBiped.Bip01_Spine2"].id, data.pObjID, (Vector(-6, 6, -1) - aea:Forward()), data.wtlPos, spd, 250, 1, "", 0, true, Color(255, 255, 255, 0))
-               if rWinch then constR:DeleteOnRemove(rWinch) end
+            if not IsValid(rWinch) then
+                local data = self.RHand_GrabbingData
+                rWinch = constraint.Elastic(rag, data.ent, pObjs["ValveBiped.Bip01_Spine2"].id, data.pObjID, (Vector(-6, 6, -1) - aea:Forward()), data.wtlPos, spd, 250, 1, "", 0, true, Color(255, 255, 255, 0))
+                if rWinch then constR:DeleteOnRemove(rWinch) end
 
-               self.RHand_Grabbing_Winch = rWinch
-           end
+                self.RHand_Grabbing_Winch = rWinch
+            end
 
-           if not rWinch then return end
-           
-           rWinch:Fire("SetSpringLength", 1)
-           rWinch:Fire("SetSpringConstant", spd * staminaLerp)
-           self.RHand_Grabbing_Winch_Forward = true
+            if rWinch then
+                rWinch:Fire("SetSpringLength", 1)
+                rWinch:Fire("SetSpringConstant", spd * staminaLerp)
+                self.RHand_Grabbing_Winch_Forward = true
+            end
         elseif in_back then
             if IsValid(rWinch) then
                rWinch:Remove()
@@ -2845,10 +2939,10 @@ function ENT:Tick()
 
             self.RHand_Grabbing_Winch = rWinch
 
-            if not rWinch then return end
-
-            rWinch:Fire("SetSpringLength", 0.1)
-            self.RHand_Grabbing_Winch_Forward = false
+            if rWinch then
+                rWinch:Fire("SetSpringLength", 0.1)
+                self.RHand_Grabbing_Winch_Forward = false
+            end
         elseif IsValid(rWinch) then 
             rWinch:Remove()
         end
@@ -2930,6 +3024,10 @@ function ENT:Draw(fl)
             if not IsValid(self) then
                 own.RenderOverride = nil
                 return
+            end
+
+            if own:GetParent() ~= rag then
+                --
             end
 
             own:DrawModel(fl)
@@ -3068,7 +3166,8 @@ function ENT:CalcView(ply, pos, ang, fov)
     
     end
 
-    ang = ang + viewPunch
+    --ang = ang + viewPunch
+    _, ang = LocalToWorld(vector_origin, viewPunch, vector_origin, ang)
     --av:Normalize()
 
     --print(ply:EyePos(), eyepos)
@@ -3227,7 +3326,7 @@ function ENT:CalcViewModelView(wep, vm, oldPos, oldAng, pos, ang)
     local wep = ply:GetActiveWeapon()
 
     if IsValid(wep) then
-        if wep.CalcViewModelView and getCV("cl_performance_luacode_usecalcviewmodelview", "Bool") then 
+        if wep.CalcViewModelView then 
             pos, ang = wep:CalcViewModelView(vm, pos, ang, pos, ang)
         elseif wep.GetViewModelPosition then 
             pos, ang = wep:GetViewModelPosition(pos, ang) 

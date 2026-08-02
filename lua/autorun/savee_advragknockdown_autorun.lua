@@ -21,15 +21,17 @@ local cvTags = {FCVAR_ARCHIVE,FCVAR_REPLICATED}
 
 -- 证明我抄袭了RagKnockdown的有力证据 7.25: 现在没有了
 local cv_kd_enabled = CreateConVar(cvPrefix .. "enabled", 1, cvTags, "激活整个插件 *警告! 哪怕这个插件被禁用 某些hook的运算也是会照常运行的!*", 0, 1)
+local cv_kd_enabled_ply = CreateConVar(cvPrefix .. "enableply", 1, cvTags, "对玩家启用击倒", 0, 1)
+local cv_kd_enabled_npc = CreateConVar(cvPrefix .. "enablenpc", 1, cvTags, "对NPC启用击倒", 0, 1)
 
 local cv_kd_knockdown_plyinveh = CreateConVar(cvPrefix .. "knockdown_playerinvehicle", 1, cvTags, "是否击倒在载具内的玩家(如果玩家在车里则试图让他们离开载具, 如果他们能)", 0, 1)
 local cv_kd_knockdown_mindamage = CreateConVar(cvPrefix .. "knockdown_mindamage", 10, cvTags, "击倒玩家最小所需的伤害, 请注意 如果力度足够也是可以击倒的", 0)
 local cv_kd_knockdown_mindamageforce = CreateConVar(cvPrefix .. "knockdown_mindamageforce", 2500, cvTags, "击倒玩家最小所需的伤害力度, 请注意 如果伤害足够也是可以击倒的", 0)
+
 local cv_kd_damagecalc_usetakedamage = CreateConVar(cvPrefix .. "knockdown_usetakedamage", 0, cvTags, "使用TakeDamageInfo并更进一步修改BulletTable, 可能会出现没受到伤害且力度不够时仍被击倒的情况", 0, 1)
 
-local cv_kd_enabled_ply = CreateConVar(cvPrefix .. "enableply", 1, cvTags, "对玩家启用击倒", 0, 1)
-local cv_kd_enabled_npc = CreateConVar(cvPrefix .. "enablenpc", 1, cvTags, "对NPC启用击倒", 0, 1)
 local cv_kd_ctrl_useheadang = CreateConVar(cvPrefix .. "control_useheadangles", 0, cvTags, "在玩家转动视角时使用玩家目前的头部朝向计算, 可能会导致无法舒适翻滚", 0, 1)
+local cv_kd_ctrl_luacode_uselocaleyeangles = CreateConVar(cvPrefix .. "control_luacode_uselocaleyeangles", 1, cvTags, "[手感][代码相关] 将要设置的EyeAngles\"局部化\"(经过Roll旋转), 可以解决部分武器包的武器上跳问题, 但可能有其它奇怪的现象", 0, 1)
 
 local cv_kd_perf_luacode_nexttick = CreateConVar(cvPrefix .. "performance_luacode_nexttick", 0.01, cvTags, "[性能][代码相关] 下次统一运行控制器Tick()的时间, 这个值越大布娃娃效果越拉跨(但性能会好点我猜), 不建议大于0.03", 0)
 local cv_kd_perf_luacode_tracelevel = CreateConVar(cvPrefix .. "performance_luacode_tracelevel", 2, cvTags, "[性能][代码相关] 查找Trace的层数, 越高越\"广泛\", 操作涉及到布娃娃的面越广, 但有潜在的性能消耗", 0)
@@ -54,7 +56,13 @@ local clcv_ctrl_aim = CreateClientConVar(cvPrefix .. "cl_control_autoaim", "0", 
 
 local var_clcv_ctrl_altaimkey = clcv_ctrl_altaimkey:GetBool()
 cvars.AddChangeCallback(cvPrefix .. "cl_control_altaimkey", function()
-    var_clcv_ctrl_altaimkey = var_clcv_ctrl_altaimkey:GetBool()
+    var_clcv_ctrl_altaimkey = clcv_ctrl_altaimkey:GetBool()
+end)
+
+
+local var_cv_kd_ctrl_luacode_uselocaleyeangles = cv_kd_ctrl_luacode_uselocaleyeangles:GetBool()
+cvars.AddChangeCallback(cvPrefix .. "cl_control_altaimkey", function()
+    var_cv_kd_ctrl_luacode_uselocaleyeangles = cv_kd_ctrl_luacode_uselocaleyeangles:GetBool()
 end)
 
 --local entMeta = FindMetaTable("Entity")
@@ -101,8 +109,13 @@ local meleeHTs = {
 }]]
 local BITCOUNT_LIMBINFO = 3
 local BITCOUNT_OPERATIONINFO = 2
+
+local vector_origin, angle_zero = Vector(), Angle()
+
 local tickInterval = engine.TickInterval()
 local handPosDelta = Vector(16, 0, -4)
+
+local handlingKnockdownedCmd = false
 
 --[[funchooks.Add("Entity.EyePos", "test1", function(self, ...)
 
@@ -578,7 +591,7 @@ funchooks.Add("Entity.EyeAngles", "Savee_AdvRagKnockdown_Sync", function(ply, ra
     --print(sysTime - lastSysTime_EyeAngles)
     local cache = ctrl.VarCaches["EyeAng"]
     if lastSysTime_EyeAngles >= sysTime and cache then 
-        return cache --Angle(cache.p, cache.y, cache.r)
+        return Angle(cache.p, cache.y, cache.r)
     end
 
 
@@ -608,7 +621,15 @@ funchooks.Add("Player.SetEyeAngles", "Savee_AdvRagKnockdown_Sync", function(ply,
 
     local ctrl = getController(ply)
     if not IsValid(ctrl) then return __undetoured(ply, ang, raw, ...) end
-    ang.r = ctrl:GetAimEyeAngles().r
+    local oldAng = ctrl:GetAimEyeAngles()
+    local roll = oldAng.r
+
+    --[[local delta = ang - oldAng
+    delta:RotateAroundAxis(oldAng:Forward(), roll)
+
+    ang = oldAng + delta]]
+
+    ang.r = roll
 
     return __undetoured(ply, ang, raw, ...)
    
@@ -749,7 +770,7 @@ funchooks.Add("Player.GetAimVector", "Savee_AdvRagKnockdown_Sync", function(ply,
 end)
 
 
-funchooks.Add("Player.IsPlayingTaunt", "Savee_AdvRagKnockdown_ARC9TPIK", function(ply, ...)
+--[[funchooks.Add("Player.IsPlayingTaunt", "Savee_AdvRagKnockdown_TauntOverride", function(ply, ...)
 
     --do return __undetoured(ply, ...) end
 
@@ -760,6 +781,21 @@ funchooks.Add("Player.IsPlayingTaunt", "Savee_AdvRagKnockdown_ARC9TPIK", functio
     return false
    
 
+end)]]
+
+funchooks.Add("CUserCmd.SetViewAngles", "Savee_AdvRagKnockdown_RecoilCorrection", function(cmd, ang, raw, ...)
+    if not raw and handlingKnockdownedCmd then
+        local oldAng = cmd:GetViewAngles()
+        local roll = oldAng.r
+
+        local delta = ang - oldAng
+        oldAng:RotateAroundAxis(oldAng:Right(), -delta.p)
+        oldAng:RotateAroundAxis(oldAng:Forward(), delta.y)
+        oldAng:RotateAroundAxis(oldAng:Up(), delta.r)
+
+        ang = oldAng
+    end
+    return __undetoured(cmd, ang, raw, ...)
 end)
 
 -- 武器支持
@@ -948,7 +984,7 @@ end)
 
 -- 所以你不必要在空中蹲下然后发现自己起不来
 -- 就当是在穿墙吧
-hook.Add("Move", "Savee_AdvRagKnockdown_RagMoveOverride", function(ply)
+hook.Add("Move", "Savee_AdvRagKnockdown_RagMoveOverride", function(ply, mv)
     
     local ctrl = ply.Savee_AdvRagKnockdown_Controller
     if not IsValid(ctrl) then return end
@@ -969,8 +1005,8 @@ hook.Add("Move", "Savee_AdvRagKnockdown_RagMoveOverride", function(ply)
         local springForceMagnitude = math.Clamp(69 * ft, 0, 2)
         viewPunchVel = viewPunchVel - viewPunch * springForceMagnitude
 
-        ply:SetViewPunchAngles(viewPunch)
-        ply:SetViewPunchVelocity(viewPunchVel)
+        ply:SetViewPunchAngles(viewPunch, true)
+        ply:SetViewPunchVelocity(viewPunchVel, true)
 
     else
         ply:SetViewPunchAngles(angle_zero)
@@ -993,8 +1029,6 @@ hook.Add("Tick", "Savee_AdvRagKnockdown_CtrlTick", function()
     if ct < nextTick then return end
     nextTick = ct + cv_kd_perf_luacode_nexttick:GetFloat()
 
-    --print("Run")
-
     for ent, _ in pairs(SAVEE_ADVRAGKNOCKDOWN_CONTROLLERS) do
         if not IsValid(ent) or ent:IsMarkedForDeletion() then removeFromCtrlList(ent) continue end
         
@@ -1008,39 +1042,6 @@ if SERVER then
 
     --util.AddNetworkString("Savee_AdvRagKnockdown_UpdateRagLimbs")
     util.AddNetworkString("Savee_AdvRagKnockdown_OperationMsg")
-
-    local hitgroup_limbs = {0.2, 0.1}
-    local hitgroupDmg_limbs = 0.6
-
-    local hitGroupMuls = {
-        [HITGROUP_GENERIC] = {0.5, 1},
-        [HITGROUP_HEAD] = {0.5, 2},
-        [HITGROUP_CHEST] = {0.6, 0.5},
-        [HITGROUP_STOMACH] = {0.8, 0.3},
-        [HITGROUP_GEAR] = {0, 0},
-        [HITGROUP_LEFTARM] = hitgroup_limbs,
-        [HITGROUP_RIGHTARM] = hitgroup_limbs,
-        [HITGROUP_LEFTLEG] = hitgroup_limbs,
-        [HITGROUP_RIGHTLEG] = hitgroup_limbs,
-    }
-    local hitGroupPhysicsDmgMuls = {
-        [HITGROUP_GENERIC] = 1,
-        [HITGROUP_HEAD] = 2.5,
-        [HITGROUP_CHEST] = 1.2,
-        [HITGROUP_STOMACH] = 1,
-        [HITGROUP_GEAR] = 0,
-        [HITGROUP_LEFTARM] = hitgroupDmg_limbs,
-        [HITGROUP_RIGHTARM] = hitgroupDmg_limbs,
-        [HITGROUP_LEFTLEG] = hitgroupDmg_limbs,
-        [HITGROUP_RIGHTLEG] = hitgroupDmg_limbs,
-    }
-
-    local dmgTypeMuls = {
-        [DMG_CRUSH] = {2, 5},
-        [DMG_CLUB] = {1.5, 2.5},
-        [DMG_SLASH] = {1.5, 0.8},
-        [DMG_BLAST] = {0.3, 2},
-    }
 
     --[[---@param ctrl Entity
     ---@param rag Entity
@@ -1735,12 +1736,17 @@ if SERVER then
     }
     local blackListedInputs = {
         IN_SPEED,
+        IN_DUCK,
     }
 
-    hook.Add("StartCommand", "Savee_AdvRagKnockdown_RagView", function(ply, cmd)
+    
+    -- 加个优先级
+    hook.Add("StartCommand", "!Savee_AdvRagKnockdown_RagView", function(ply, cmd)
         ---@type Entity
         local ctrl = ply.Savee_AdvRagKnockdown_Controller
+        handlingKnockdownedCmd = IsValid(ctrl)
         if not IsValid(ctrl) then return end
+
 
         local stamina = ctrl:GetStamina()
         local consc = ctrl:GetConsciousness()
@@ -1909,18 +1915,27 @@ else
         oldAng:RotateAroundAxis(refAng:Up(), -deltaAng.y * conscLerp)
 
         --newAng:Normalize()
-        cmd:SetViewAngles(oldAng)
+        cmd:SetViewAngles(oldAng, true)
         return true
     end)
 
-    hook.Add("StartCommand", "Savee_AdvRagKnockdown_RagOperation", function(ply, cmd)
+    local last_stored_roll = 0
+    hook.Add("StartCommand", "!Savee_AdvRagKnockdown_RagOperation", function(ply, cmd)
         ---@type Entity
         local ctrl = getController(ply)
+        handlingKnockdownedCmd = IsValid(ctrl)
         if not IsValid(ctrl) then oldAimingState = false return end
 
         local consc = ctrl:GetConsciousness()
 
         local oldAng = ctrl:GetAimEyeAngles()
+        local wep = ply:GetActiveWeapon()
+
+        -- 原版武器兼容, 虽然你无论怎么压枪弹道都是往上飘的就是了
+        if IsValid(wep) and not wep:IsScripted() and last_stored_roll ~= 0 and oldAng.r == 0 then
+            oldAng.r = last_stored_roll
+        end
+
         local conscLerp = math.ease.OutQuint(consc / 100)
 
         if ctrl:GetParent() ~= ctrl:GetRagdoll() then
@@ -1930,7 +1945,8 @@ else
         elseif cmd:KeyDown(IN_MOVERIGHT) then
             oldAng = (oldAng + Angle(0, 0, 90) * conscLerp * FrameTime())
         end
-        cmd:SetViewAngles(oldAng)
+        cmd:SetViewAngles(oldAng, true)
+        last_stored_roll = oldAng.r
 
         local aimingBind = clcv_ctrl_nodefkeybind:GetBool() and input.LookupBinding("+advragknockdown_aimweapon") or input.LookupBinding(cvPrefix .. "toggleaimweapon")
 
