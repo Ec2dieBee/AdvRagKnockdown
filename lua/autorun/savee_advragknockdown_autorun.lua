@@ -1950,7 +1950,7 @@ else
 
         local aimingBind = clcv_ctrl_nodefkeybind:GetBool() and input.LookupBinding("+advragknockdown_aimweapon") or input.LookupBinding(cvPrefix .. "toggleaimweapon")
 
-        local newAimingState = cmd:KeyDown(var_clcv_ctrl_altaimkey and IN_ALT or IN_USE)
+        local newAimingState = cmd:KeyDown(var_clcv_ctrl_altaimkey and IN_WALK or IN_USE)
         
         -- 世界上最聪明的解决方案
         if clcv_ctrl_reversedaiming:GetBool() then newAimingState = not newAimingState end
