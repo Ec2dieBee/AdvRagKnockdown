@@ -366,6 +366,61 @@ local function cloneAtoB(b, a, fucked)
 	
 end
 
+-- 傻逼代码
+-- 你知道吗: 我的数学只有90多分
+-- 理论上有一个公式可以解决它, 但我猜这么做会有更好的性能... 大概
+-- 当然 - 我希望偏差最小(但这貌似加大了开销wtf)
+local stuckSequence = {
+    -10,
+    10,
+    -9,
+    9,
+    -8,
+    8,
+    -7,
+    7,
+    -6,
+    6,
+    -5,
+    5,
+    -4,
+    4,
+    -3,
+    3,
+    -2,
+    2,
+    -1,
+    1,
+}
+
+local function handleStuck(ent, pos, mins, maxs)
+    for x = 1, 20 do
+        x = stuckSequence[x]
+        for y = 1, 20 do
+            y = stuckSequence[y]
+            for z = 1, 21 do
+                z = stuckSequence[z] or 0
+                local newPos = pos + Vector(x, y, z)
+
+                local tr = util.TraceHull({
+                    start = newPos,
+                    endpos = newPos,
+                    mins = mins,
+                    maxs = maxs,
+                    filter = ent
+                })
+
+                if not tr.Hit then 
+                    debugoverlay.Box(newPos, mins, maxs, 3, Color(0, 255, 0, 155))
+                    return newPos 
+                end
+            end
+        end
+    end
+
+    return false
+end
+
 local function runThatHook(name, ...)
     local stuffs = {hook.Run(name, ...)}
 
@@ -561,29 +616,13 @@ ENT.KeyInputs = {}
 -- 用以解决30个插件不间断强奸EyePos造成的卡顿
 ENT.VarCaches = {}
 
-ENT.AnimationTable = {
+local anims = {
     Getup = {
-        --[[{
-            Model = "models/Combine_Super_Soldier.mdl",
-            Sequence = "cover_crouch", -- 可以是数字
-
-            AngDelta = Angle(0, 0, 0), -- 相对角度偏移
-
-            -- PhysControl Parameter
-            -- {startCycle, EndCycle}
-            Recover = {0.1, 0.9},
-            Recover_Duck = {0.4, 0.5},
-            -- pitchmin, pitchmax, 翻转
-            Pitch = {-90, 90, true},
-            -- 在站着的位置(盆骨距离地面45hu)的Cycle
-            GetUp_Stand = 0.7,
-            -- 在蹲着的位置(盆骨距离地面25hu)的Cycle
-            GetUp_Duck = 0.3,
-        },]]
+        -- 面朝天
         {
             Model = "models/Zombie/Classic.mdl",
-            Sequence = "slumprise_b", -- 可以是数字
-            AngDelta = Angle(0, 0, 0), -- 相对角度偏移
+            Sequence = "slumprise_b",
+            AngDelta = Angle(0, 180, 0),
 
             -- PhysControl Parameter
             -- {startCycle, EndCycle}
@@ -594,10 +633,11 @@ ENT.AnimationTable = {
             GetUp_Stand = 0.8,
             GetUp_Duck = 0.6,
         },
+        -- 面朝地
         {
             Model = "models/Zombie/Classic.mdl",
-            Sequence = "slumprise_a", -- 可以是数字
-            AngDelta = Angle(0, 0, 0), -- 相对角度偏移
+            Sequence = "slumprise_a",
+            AngDelta = Angle(0, 0, 0),
 
             StartCycle = 0.3,
             -- PhysControl Parameter
@@ -610,6 +650,12 @@ ENT.AnimationTable = {
         },
     },
 }
+
+timer.Simple(tickInterval, function()
+    hook.Run("Savee_AdvRagKnockdown_GetUpAnimationInit", anims.Getup)
+end)
+
+ENT.AnimationTable = anims
 
 function ENT:SpawnFunction(ply, tr, ClassName)
 
@@ -730,6 +776,10 @@ function ENT:RemoveSelf(killOwner)
             end
         end
     end
+
+    -- 甲级战犯#2 has BEEn found
+    -- cause: 这B玩意会在下一tick移除, 很显然某些状态会继续(包括BONEMERGE/父子级的状态, 这意味着设置位置的玩意完全无效)
+    self:OnRemove()
     self:Remove()
     --SafeRemoveEntity(self)
 end
@@ -931,7 +981,7 @@ function ENT:Initialize()
 
         --print(spd * mul, mul)
 
-        spd = math.max(spd * mul - (official and (self.GettingUp and 1000 or 800) or 1200) / math.max(1, mdlScale), 0)
+        spd = math.max(spd * mul - (official and (self.GettingUp and 800 or 600) or 1200) / math.max(1, mdlScale), 0)
         --print(spd)
         if spd == 0 or data.HitEntity == rag then return end
 
@@ -954,8 +1004,6 @@ function ENT:Initialize()
         local dmg = (spd / 10 - pObj:GetMass()) * math.min(data.DeltaTime, 1)
         if ent:GetClass() == "func_breakable_surf" then 
             dmg = dmg / 10 
-        else
-            dmg = dmg * 4
         end
 
         --print(hitGroup)
@@ -1020,7 +1068,7 @@ function ENT:Initialize()
     --own:SetLightingOriginEntity(rag)
 
     own:AddEffects(EF_BONEMERGE)
-    --own:AddEffects(EF_BONEMERGE_FASTCULL)
+    own:AddEffects(EF_BONEMERGE_FASTCULL)
     --own:SetNoDraw()
 
     local aimBlock = own:IsNPC() and aimBlackListedNPCClass[own:GetClass()]
@@ -1140,7 +1188,7 @@ function ENT:TryGetUp(animTbl, forced)
             end
             besties[#besties + 1] = data
         end
-        animTbl = next(besties) and besties[math.random(#besties)] or self.AnimationTable.Getup[math.random(#self.AnimationTable.Getup)]
+        animTbl = next(besties) and besties[math.random(#besties)] or table.Random(self.AnimationTable.Getup)
 
     end
 
@@ -1244,7 +1292,8 @@ function ENT:RestorePlayerData()
     local offset = self.m_vOwnViewOffset
     own:SetViewOffset(offset)
     if own:IsPlayer() then 
-        own:SetCurrentViewOffset(offset)
+        ---@cast own Player
+        own:SetCurrentViewOffset(self:HasKeyInput(IN_DUCK) and own:GetViewOffsetDucked() or offset)
     end
     
     own:SetMoveType(self.m_iOwnMoveType or MOVETYPE_STEP)
@@ -1255,6 +1304,8 @@ function ENT:RestorePlayerData()
 end
 
 function ENT:OnRemove()
+
+    if self.Removing then return end
 
     self.Removing = true
     local rag = self:GetRagdoll()
@@ -1277,23 +1328,10 @@ function ENT:OnRemove()
         if own:GetParent() == rag then
             own:SetParent(nil)
             own:RemoveEffects(EF_BONEMERGE)
-            --own:RemoveEffects(EF_BONEMERGE_FASTCULL)
+            own:RemoveEffects(EF_BONEMERGE_FASTCULL)
         end
 
         self:RestorePlayerData()
-        local newPos = self.GettingUp_NewOwnerPos
-
-        -- 年度最傻逼问题, 神他妈必须在移除的时候设置才给弄
-        if newPos then
-            if own:IsPlayer() and self:HasKeyInput(IN_DUCK) then
-                local _, standMax = own:GetHull()
-                local _, duckMax = own:GetHullDuck()
-                newPos.z = newPos.z - (standMax.z - duckMax.z)
-            end
-
-            own:SetPos(newPos)
-            own:SetLocalVelocity(vector_origin)
-        end
 
     end
     
@@ -1654,22 +1692,30 @@ function ENT:Think()
         self.GettingUp = false
     elseif self.GettingUp then
 
+        local in_duck = self.GettingUp_Crouch
+
         local anim = self.GetupAnimModel
         
         local animData = self.CurGetUpAnimData
 
         --local myMdl, animMdl = self:GetModel(), animData.Model
         local cyc = anim:GetCycle()
-        local recover = self.GettingUp_Crouch and animData.Recover_Duck or animData.Recover
+        local recover = in_duck and animData.Recover_Duck or animData.Recover
         --print(cyc, animData.Recover[2])
 
         if cyc >= recover[2] then
-            local tr = util.TraceEntityHull({
+            local mins, maxs = own:OBBMins(), own:OBBMaxs()
+            mins.z = 0
+            maxs.z = 0
+
+            local tr = util.TraceHull({
                 start = pelvisPos + Vector(0, 0, 5),
                 endpos = pelvisPos - Vector(0, 0, 100),
                 filter = {self, rag, own},
                 mask = MASK_ALL,
-            }, own)
+                mins = mins,
+                maxs = maxs,
+            })
 
             --print(tr.Entity)
 
@@ -1679,14 +1725,37 @@ function ENT:Think()
             rag:SetVelocity(Vector())
             self:SetVelocity(Vector())
             local pos = tr.HitPos + Vector(0, 0, 0.01)
+            
+            if isPly then
+                mins, maxs = own:GetHull()
+    
+                if self.GettingUp_Crouch then
+                    local duckMins, duckMaxs = own:GetHullDuck()
 
-            self.GettingUp_NewOwnerPos = pos
+                    --print((maxs.z - duckMaxs.z))
+                    --pos.z = pos.z - (maxs.z - duckMaxs.z)
+                    mins, maxs = duckMins, duckMaxs
+                end
+    
+                local stuckTest = util.TraceHull({
+                    start = pos,
+                    endpos = pos,
+                    filter = {self, rag, own},
+                    mins = mins,
+                    maxs = maxs,
+                })
+
+                debugoverlay.Box(pos, mins, maxs, 3, Color(255, 0, 0, 155))
+
+                if stuckTest.Hit then 
+                    pos = handleStuck(own, pos, mins, maxs)
+                    if not pos then Savee_AdvRagKnockdown_DoKnockdown(own) return end
+                end
+            end
             self:RemoveSelf()
+            own:SetLocalVelocity(vector_origin)
             own:SetPos(pos, true)
-            timer.Simple(0, function()
-                if not IsValid(own) then return end
-                own:SetPos(pos, true)
-            end)
+
             return
         elseif cyc >= recover[1] and self:GetParent() == rag then
 
@@ -1700,15 +1769,15 @@ function ENT:Think()
 
             local trans = wep.TranslateActivity
             local selectedACT = IsValid(wep) and actIndex[wep:GetHoldType()] or ACT_HL2MP_IDLE
-            local rawACT = self.GettingUp_Crouch and ACT_MP_CROUCH_IDLE or ACT_MP_STAND_IDLE
+            local rawACT = in_duck and ACT_MP_CROUCH_IDLE or ACT_MP_STAND_IDLE
             -- weapon_base/sh_anims.lua
-            if self.GettingUp_Crouch then selectedACT = selectedACT + 3 end
+            if in_duck then selectedACT = selectedACT + 3 end
 
             self:SetParent(nil)
             self:SetPos(tr.HitPos + Vector(0, 0, 0.2))
             self:SetAngles(angle_zero)
             self:SetModel(own:GetModel())
-            self:SetSequence(own:SelectWeightedSequence(isfunction(trans) and trans(wep, rawACT) or selectedACT))
+            self:SetSequence(isPly and own:SelectWeightedSequence(isfunction(trans) and trans(wep, rawACT) or selectedACT) or own:GetSequence())
             self:SetPlaybackRate(own:GetPlaybackRate())
             self:SetCycle(own:GetCycle())
             self:SetPoseParameter("aim_pitch", own:GetPoseParameter("aim_pitch"))
@@ -2654,23 +2723,29 @@ function ENT:Tick()
             local bName = target:GetBoneName(i)
             if shadowCtrls[bName] or not pObjs[bName] or not pObjs[bName].physBone or not boneWhiteList[bName] then continue end
 
+            ---@type PhysObj
             local pObj = pObjs[bName].pObj
             local pos, ang = target:GetBonePosition(i)
             --local mass = pObj:GetMass()
             --print(bName, mass)
 
-            --pObj:EnableMotion(false)
+            --[[if self.GettingUp_SyncingToOwner and pObj:IsMotionEnabled() then
+                pObjs[bName].MotionDisabledByGetUp = true
+                pObj:EnableMotion(false)
+            elseif not self.GettingUp_SyncingToOwner and pObjs[bName].MotionDisabledByGetUp then
+                pObj:EnableMotion(true)
+            end]]
 
             shadowCtrls[bName] = {
                 --secondstoarrive = 0.01,
                 pos = pos,
                 angle = ang,
                 maxspeed = 30 * getupForceMul,
-                maxspeeddamp = 15 * getupForceMul * (self.GettingUp_SyncingToOwner and 3 or 1),
+                maxspeeddamp = 30 * getupForceMul * (self.GettingUp_SyncingToOwner and 3 or 1),
                 maxangular = 350,
                 maxangulardamp = 1350,
                 dampfactor = Lerp((self.GetupAnimModel:GetCycle() - 0.3) / 0.7, 0.2, 0.5),
-                delta = self.GettingUp_SyncingToOwner and 0.02 or 0.2,
+                delta = self.GettingUp_SyncingToOwner and 0.1 or 0.2,
                 DontFuckMe = true,
                 --addMass = getupUseMass,
             }
@@ -3278,7 +3353,7 @@ function ENT:CalcViewModelView(wep, vm, oldPos, oldAng, pos, ang)
     --print(eyeang)
     --print(oldAng, ply:EyeAngles())
 
-
+    ang = self:GetAimEyeAngles()
     local _, hang = rag:GetBonePosition(rag:LookupBone("ValveBiped.Bip01_R_Hand"))
 
     _, hang = LocalToWorld(vector_origin, Angle(0, 0, 180), vector_origin, hang)
@@ -3316,14 +3391,13 @@ function ENT:CalcViewModelView(wep, vm, oldPos, oldAng, pos, ang)
     -- 已经折腾快一天了(实际上不够24小时)
 
     -- 很奇怪, dAng必须被加上去
-    pos, ang = LocalToWorld(lpos, lang + dang * factorX, eyepos, aeyeang)
+    pos, ang = LocalToWorld(lpos, -lang + dang * factorX, eyepos, aeyeang)
     -- 又一个歪打正着
     ang:RotateAroundAxis(ang:Right(), dang.p * factorX)
     ang:RotateAroundAxis(ang:Up(), dang.y * factorX)
     ang:RotateAroundAxis(ang:Forward(), lea.r * factorX)
     --ang.r = 0
     --print(ang)
-    local wep = ply:GetActiveWeapon()
 
     if IsValid(wep) then
         if wep.CalcViewModelView then 
@@ -3331,7 +3405,6 @@ function ENT:CalcViewModelView(wep, vm, oldPos, oldAng, pos, ang)
         elseif wep.GetViewModelPosition then 
             pos, ang = wep:GetViewModelPosition(pos, ang) 
         end
-
     end
     --local _, delta = WorldToLocal(vector_origin, angle_zero, eyepos, eyeang)
     --print(self:GetRArmDelta())

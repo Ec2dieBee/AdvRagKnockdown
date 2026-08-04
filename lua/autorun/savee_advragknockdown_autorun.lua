@@ -4,7 +4,9 @@
 -- 你知道有好的方法能用但是因为你看了答案所以你不再能使用它aughhhhhhhh
 -- 
 -- Savee14702 保留一切权利
--- 如果使用/修改该插件的核心部分, 请在发布页面的Credits里加上我的名字(也别拿去商用)
+-- 如果使用/修改该插件的核心部分, 请获得许可并在发布页面的Credits里加上我的名字(也别拿去商用)
+-- Savee14702 All Rights Reserved.
+-- If used/modified the "core" part of this addon, please ask for my permission and add my name in the "Credits" section(if it has) of your release page(Workshop page I guess)(AND NO COMMERICAL USE!)
 -- 
 -- 2026/5/17 这一切全他妈关于速度 你想要留下你的名字就必须快点, 是的这都关于名头, 你第一个弄出来这个名头就是你的
 -- @RagKnockdown @MPNKnockdown(RagKnockdown的更全的老版本, 支持ClassicKnockdown(ZSKnockdown), 这是我的命名)
@@ -52,11 +54,18 @@ local clcv_ctrl_nodefkeybind = CreateClientConVar(cvPrefix .. "cl_control_disabl
 local clcv_ctrl_reversedaiming = CreateClientConVar(cvPrefix .. "cl_control_reversedaiming", "0", true, true, "[仅按住E可用时] 按住E取消瞄准 而不是进行瞄准", 0, 1)
 local clcv_ctrl_altaimkey = CreateClientConVar(cvPrefix .. "cl_control_altaimkey", "0", true, true, "[仅按住E可用时] 按住[慢走键](默认是LAlt)进行瞄准", 0, 1)
 local clcv_ctrl_aim = CreateClientConVar(cvPrefix .. "cl_control_autoaim", "0", true, true, "[仅自定义按键可用时] 击倒时默认开启瞄准(0: 关闭, 1: 仅主动击倒, 2: 任何情况下被击倒(需要服务器打开相关设置!))", 0, 2)
+local clcv_ctrl_getup_smoothtransition = CreateClientConVar(cvPrefix .. "cl_getup_smoothtransitioninterval", "0.15", true, true, "在起身后视角在和老视角和实际视角的过渡时间, 总而言之就是能让起身的视角转换看上去丝滑一点(我相信你不会把它改成1以上的值)", 0)
 --local clcv_perf_usecalcviewmodelview = CreateClientConVar(cvPrefix .. "cl_performance_luacode_usecalcviewmodelview", "1", true, true, "[绘制][代码相关] 是否使用武器的CalcViewModelView, 可能有神秘小Bug", 0, 1)
 
+-- 再多一个这样的玩意就把它改成function, 请(
 local var_clcv_ctrl_altaimkey = clcv_ctrl_altaimkey:GetBool()
 cvars.AddChangeCallback(cvPrefix .. "cl_control_altaimkey", function()
     var_clcv_ctrl_altaimkey = clcv_ctrl_altaimkey:GetBool()
+end)
+
+local var_clcv_ctrl_getup_smoothtransition = clcv_ctrl_getup_smoothtransition:GetFloat()
+cvars.AddChangeCallback(cvPrefix .. "cl_getup_smoothtransitioninterval", function()
+    var_clcv_ctrl_getup_smoothtransition = clcv_ctrl_getup_smoothtransition:GetFloat()
 end)
 
 
@@ -169,10 +178,13 @@ local function entTypeCheck(ent)
 end
 local function getController(ent)
     if not cv_kd_enabled:GetBool() or not IsValid(ent) then return end
+
     local ctrl = CLIENT and ent:GetNW2Entity("Savee_AdvRagKnockdown_Controller") or ent.Savee_AdvRagKnockdown_Controller
     if not IsValid(ctrl) or ctrl.Removing or not ctrl.GetRagdoll then return end
+
     local rag = ctrl:GetRagdoll()
     if not IsValid(rag) or rag:IsMarkedForDeletion() then return end
+
     return ctrl
 end
 
@@ -1037,6 +1049,13 @@ hook.Add("Tick", "Savee_AdvRagKnockdown_CtrlTick", function()
         ent:Tick()
     end
 end)
+
+hook.Add("CalcMainActivity", "Savee_AdvRagKnockdown_Correction", function(ply)
+    local ctrl = getController(ply)
+    if not IsValid(ctrl) then return end
+
+    return ctrl:HasKeyInput(IN_DUCK) and ACT_MP_CROUCH_IDLE or ACT_MP_STAND_IDLE, -1
+end)
     
 if SERVER then
 
@@ -1090,7 +1109,6 @@ if SERVER then
     local function doKnockdown(ply, vec, bone)
 
         if not cv_kd_enabled:GetBool() then return end
-
         
         if not entTypeCheck(ply) then return end
         --print("正在击倒: ", ply, vec, bone)
@@ -1098,19 +1116,19 @@ if SERVER then
         local oldCtrl = getController(ply)
         if IsValid(oldCtrl) then
             oldCtrl.GettingUp = false
+            --[[for _, data in pairs(oldCtrl.RagPObjs) do
+                if not data.physBone then continue end
+                local pObj = data.pObj
+                if data.MotionDisabledByGetUp then
+                    data.MotionDisabledByGetUp = nil
+                    pObj:EnableMotion(true)
+                end
+            end]]
+
             if ply:IsNPC() then
                 oldCtrl:SetCachedVar("NPC_CanGetUpVar", false, math.Rand(3, 7))
             end
         end
-        
-        --[[if ply:IsNPC() then 
-            -- sa_03
-            for _, e in pairs(ents.FindInSphere(ply:GetPos(), 512)) do
-                if IsValid(e) and e:CreatedByMap() and e:GetParent() == ply then return end
-                --if e:GetMoveParent() == ply then print(e) end
-            end
-            --return
-        end]]
 
         if ply:IsPlayer() and ply:InVehicle() then
             if not cv_kd_knockdown_plyinveh:GetBool() then return end
@@ -1992,8 +2010,6 @@ else
 
     -- 类似Z-City那样的"平滑转换"
 
-    local calcview_transtime = 0.1
-
     local calcview_last_stored = -1
     local calcview_last_pos = vector_origin
     local calcview_last_ang = angle_zero
@@ -2002,7 +2018,7 @@ else
         local ct = CurTime()
 
         if returnCheck(self) then 
-
+            local calcview_transtime = var_clcv_ctrl_getup_smoothtransition
             local lerp = (ct - calcview_last_stored) / calcview_transtime
 
             return calcview_last_stored + calcview_transtime >= ct and {
@@ -2021,10 +2037,28 @@ else
 
     end)
 
-    hook.Add("CalcViewModelView", "Savee_AdvRagKnockdown_CTRLHook", function(...)
+    hook.Add("CalcViewModelView", "Savee_AdvRagKnockdown_CTRLHook", function(wep, vm, oldPos, oldAng, pos, ang, ...)
         local self = getController(LocalPlayer():GetViewEntity())
-        if returnCheck(self) then return end
-        return self:CalcViewModelView(...)
+        if returnCheck(self) then
+            local ct = CurTime()
+            
+            local calcview_transtime = var_clcv_ctrl_getup_smoothtransition
+            local lerp = (ct - calcview_last_stored) / calcview_transtime
+
+            if calcview_last_stored + calcview_transtime < ct then return end
+            pos = LerpVector(lerp, calcview_last_pos, pos)
+
+            if IsValid(wep) then
+                if wep.CalcViewModelView then 
+                    pos, ang = wep:CalcViewModelView(vm, pos, ang, pos, ang)
+                elseif wep.GetViewModelPosition then 
+                    pos, ang = wep:GetViewModelPosition(pos, ang) 
+                end
+            end
+            
+            return pos, ang
+        end
+        return self:CalcViewModelView(wep, vm, oldPos, oldAng, pos, ang, ...)
     
     end)
     hook.Add("PreDrawPlayerHands", "Savee_AdvRagKnockdown_CTRLHook", function(...)
@@ -2152,10 +2186,13 @@ else
         -- 一种模拟布娃娃光照的方法, 应该可以修复一些Bug, 代价嘛...
         -- 我猜这个也花不了多少性能:/
         local oldPos = rag:GetPos()
-        local pos = oldPos + rag:OBBCenter() + Vector(0, 0, 1)
+        local pos = oldPos + rag:OBBCenter() - Vector(0, 0, 16) -- 目前来看这么做可以模拟布娃娃的光照
+    
         rag:SetPos(pos)
         --own:SetPos(pos)
+
         render.SetLightingOrigin(pos)
+
         local result = {__undetoured(ent, fl, ...)}
         rag:SetPos(oldPos)
 
@@ -2224,5 +2261,30 @@ hook列表
     传出:
         float?, 新的体力伤害, 如果为空则使用默认值
         float?, 新的意识伤害, 如果为空则使用默认值
+    **Savee_AdvRagKnockdown_GetUpAnimationInit**
+    介绍:
+        在这里添加你的自定义动画
+        你可以在这里添加非数字key
+    传入: 
+        animtbl, table, 动画表
+    示例:
+    
+        animtbl.test = {
+            Model = "models/Combine_Super_Soldier.mdl",
+            Sequence = "cover_crouch", -- 可以是数字
+
+            AngDelta = Angle(0, 0, 0), -- 相对角度偏移
+
+            -- PhysControl Parameter
+            -- {startCycle, EndCycle}
+            Recover = {0.1, 0.9},
+            Recover_Duck = {0.4, 0.5},
+            -- pitchmin, pitchmax, 翻转
+            Pitch = {-90, 90, true},
+            -- 在站着的位置(盆骨距离地面45hu)的Cycle
+            GetUp_Stand = 0.7,
+            -- 在蹲着的位置(盆骨距离地面25hu)的Cycle
+            GetUp_Duck = 0.3,
+        },
 
 ]]
