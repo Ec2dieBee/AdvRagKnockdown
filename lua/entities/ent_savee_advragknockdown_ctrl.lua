@@ -583,6 +583,8 @@ ENT.Caches = {
     HeadWalling = 0,
 }
 
+ENT.OwnerModifiedEnts = {}
+
 ENT.RagPObjs = {}
 ENT.RagLastModel = ""
 
@@ -1315,6 +1317,11 @@ function ENT:OnRemove()
 
     if CLIENT then 
         return
+    end
+
+    for ent, _ in pairs(self.OwnerModifiedEnts) do
+        if not IsValid(ent) then continue end
+        ent:SetOwner(own)
     end
 
     --print(rag)

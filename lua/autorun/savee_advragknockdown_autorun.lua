@@ -511,8 +511,11 @@ funchooks.Add("Entity.SetOwner", "Savee_AdvRagKnockdown_AntiBadCollision", funct
 
     if raw or not entTypeCheck(own) then return __undetoured(ent, own, raw, ...) end
     local ctrl = getController(own)
+
     if not IsValid(ctrl) then return __undetoured(ent, own, raw, ...) end
     local rag = ctrl:GetRagdoll()
+
+    ctrl.OwnerModifiedEnts[ent] = true
 
     return __undetoured(ent, rag, raw, ...)
    
