@@ -435,18 +435,6 @@ for _, str in ipairs(setItOnMe) do
 
 end
 
-funchooks.Add("Entity.GetPos", "Savee_AdvRagKnockdown_Sync", function(ent, raw, ...)
-
-    if raw or not entTypeCheck(ent) then return __undetoured(ent, raw, ...) end
-    local ctrl = getController(ent)
-    if not IsValid(ctrl) then return __undetoured(ent, raw, ...) end
-    local rag = ctrl:GetRagdoll()
-    local bone = rag:GetBonePosition(0)
-
-    return bone
-   
-end)
-
 local doOriginalHTs = {
     ["knife"] = true,
     ["melee"] = true,
@@ -517,6 +505,29 @@ funchooks.Add("NPC.GetShootPos", "Savee_AdvRagKnockdown_Sync", function(ply, ...
     return tr.HitPos
    
 
+end)
+
+funchooks.Add("Entity.SetOwner", "Savee_AdvRagKnockdown_AntiBadCollision", function(ent, own, raw, ...)
+
+    if raw or not entTypeCheck(own) then return __undetoured(ent, own, raw, ...) end
+    local ctrl = getController(own)
+    if not IsValid(ctrl) then return __undetoured(ent, own, raw, ...) end
+    local rag = ctrl:GetRagdoll()
+
+    return __undetoured(ent, rag, raw, ...)
+   
+end)
+
+funchooks.AddPost("Entity.GetOwner", "Savee_AdvRagKnockdown_AntiBadCollision", function(ent, inputs, own, ...)
+
+    local raw = inputs[1]
+    if raw or not entTypeCheck(own) then return __undetoured(ent, inputs, own, ...) end
+
+    local ctrl = getController(own)
+    if not IsValid(ctrl) then return __undetoured(ent, inputs, own, ...) end
+
+    return __undetoured(ent, inputs, __raw(ctrl), ...)
+   
 end)
 
 local INE = math.IsNearlyEqual
@@ -662,6 +673,18 @@ funchooks.Add("Entity.GetVelocity", "Savee_AdvRagKnockdown_Sync", function(ply, 
         vel = Vector()
     end
     return vel
+   
+end)
+
+funchooks.Add("Entity.GetPos", "Savee_AdvRagKnockdown_Sync", function(ent, raw, ...)
+
+    if raw or not entTypeCheck(ent) then return __undetoured(ent, raw, ...) end
+    local ctrl = getController(ent)
+    if not IsValid(ctrl) then return __undetoured(ent, raw, ...) end
+    local rag = ctrl:GetRagdoll()
+    local bone = rag:GetBonePosition(0)
+
+    return bone
    
 end)
 
@@ -1731,6 +1754,15 @@ if SERVER then
         AddOriginToPVS(ply:EyePos())
     end)
 
+    -- 你知道吗我又加了两个感叹号
+    hook.Add("EntityTakeDamage", "!!!!!Savee_AdvRagKnockdown_OwnerCorrection", function(rag, di)
+
+        local atk = di:GetAttacker()
+
+        local ctrl = getController(atk)
+        if IsValid(ctrl) and atk:IsRagdoll() then di:SetAttacker(ctrl:GetOwner()) end
+    
+    end)
     hook.Add("PostEntityTakeDamage", "Savee_AdvRagKnockdown_RagDamage", function(rag, di, take)
 
         if not cv_kd_enabled:GetBool() or cv_kd_damagecalc_usetakedamage:GetBool() or rag:IsMarkedForDeletion() then return end
