@@ -394,12 +394,12 @@ local stuckSequence = {
 }
 
 local function handleStuck(ent, pos, mins, maxs)
-    for x = 1, 20 do
-        x = stuckSequence[x]
+    for z = 1, 21 do
+        z = stuckSequence[z] or 0
         for y = 1, 20 do
             y = stuckSequence[y]
-            for z = 1, 21 do
-                z = stuckSequence[z] or 0
+            for x = 1, 20 do
+                x = stuckSequence[x]
                 local newPos = pos + Vector(x, y, z)
 
                 local tr = util.TraceHull({
@@ -767,6 +767,7 @@ end
 
 function ENT:RemoveSelf(killOwner)
     if CLIENT then return end
+
     local own = self:GetOwner()
     local rag = self:GetRagdoll()
     if IsValid(own) then
@@ -781,9 +782,9 @@ function ENT:RemoveSelf(killOwner)
 
     -- 甲级战犯#2 has BEEn found
     -- cause: 这B玩意会在下一tick移除, 很显然某些状态会继续(包括BONEMERGE/父子级的状态, 这意味着设置位置的玩意完全无效)
-    self:OnRemove()
     self:Remove()
-    --SafeRemoveEntity(self)
+    --self:OnRemove()
+    --SafeRemoveEntityDelayed(self, tickInterval)
 end
 
 -- lua_run PrintTable(hook.GetTable()["CreateEntityRagdoll"])
@@ -870,12 +871,12 @@ function ENT:Initialize()
     end
     --rag:SetParent(nil)
     --rag:RemoveEffects(EF_BONEMERGE)
+    rag:AddEffects(EFL_DONTWALKON)
     rag:AddEffects(EFL_DONTBLOCKLOS)
     rag:AddFlags(FL_NOTARGET)
-    rag:AddFlags(FL_AIMTARGET)
-    rag:AddFlags(FL_NPC)
-    rag:RemoveFlags(FL_OBJECT)
     rag:SetCollisionGroup(own:IsPlayer() and COLLISION_GROUP_PLAYER or COLLISION_GROUP_DEBRIS_TRIGGER)
+
+    if own:IsNPC() then constraint.NoCollide(own, rag, 0, 0, false) end
 
     --modifyRagdoll(rag)
 
@@ -1005,7 +1006,7 @@ function ENT:Initialize()
 
         local dmg = (spd / 10 - pObj:GetMass()) * math.min(data.DeltaTime, 1)
         if ent:GetClass() == "func_breakable_surf" then 
-            dmg = dmg / 10 
+            dmg = dmg / 10
         end
 
         --print(hitGroup)
@@ -1048,14 +1049,15 @@ function ENT:Initialize()
     --own:FollowBone(rag, rag:LookupBone("ValveBiped.Bip01_R_Hand"))
     own:SetNW2Entity("Savee_AdvRagKnockdown_Controller", self)
     
-    -- 看起来是SetParent太早导致的VPhysics.dll抽风(access violation exception)
+    -- 看起来是SetMoveParent太早导致的VPhysics.dll抽风(access violation exception)
     -- 在sa_03测试了, 击杀3-4个盾兵并未发生崩溃情况(老方法会崩溃, 参见autorun.lua)
     -- 我就一会点GmosLua的苦逼高中生, C艹这些玩意交给高人解决吧(奈莉看完也4了.jpg)
     timer.Simple(tickInterval, function() 
         if not IsValid(self) or not IsValid(rag) then return end
         -- [ARC9] Modern Warfare 2019 飞刀支持
         modifyRagdoll(rag, pObjs, ownVel)
-        own:SetParent(rag)
+        
+        own:SetMoveParent(rag)
         self.Initialized = true
     end)
 
@@ -1102,6 +1104,7 @@ function ENT:Initialize()
     anim:SetAutomaticFrameAdvance(true)
 
     if not own:IsPlayer() then 
+        ---@cast own NPC
         self.UsePlayerAimAnimation = aimBlock
         self:SetCachedVar("NPC_CanGetUpVar", false, math.Rand(2, 5))
         --return
@@ -1185,9 +1188,11 @@ function ENT:TryGetUp(animTbl, forced)
         for _, data in ipairs(self.AnimationTable.Getup) do
             local angData = data.Pitch or {0, 0}
             local min, max, rev = angData[1], angData[2], angData[3]
+
             if rev and (pitch > min and pitch < max) or not rev and (pitch < min or pitch > max) then 
                 continue
             end
+
             besties[#besties + 1] = data
         end
         animTbl = next(besties) and besties[math.random(#besties)] or table.Random(self.AnimationTable.Getup)
@@ -1226,7 +1231,7 @@ function ENT:TryGetUp(animTbl, forced)
     local heightLerp = ((pos2.z + pos.z) / 2 - heightTr.HitPos.z) / (24 * mdlScale) - 0.1
     --print(heightLerp)
     
-    local tr = util.TraceHull({
+    local tr = rag:WaterLevel() >= 1 and {HitPos = rag:GetPos()} or util.TraceHull({
         start = rag:GetPos() + Vector(0, 0, 5), 
         endpos = rag:GetPos() - Vector(0, 0, 64),
         filter = {rag, own},
@@ -1272,7 +1277,7 @@ function ENT:ShouldGetUp()
         local bp2 = rag:GetBonePosition(0)
         local dist = bp1:Distance(bp2)
 
-        if dist > 25 then return false end
+        if dist > 25 and rag:WaterLevel() < 1 then return false end
     else
         local pos = rag:GetBonePosition(0)
         local tr = util.TraceLine({start = pos + Vector(0, 0, 5), endpos = pos - Vector(0, 0, 64 * rag.Savee_AdvRagKnockdown_ModelScale), filter = {self, own}, mask = MASK_ALL})
@@ -1319,20 +1324,21 @@ function ENT:OnRemove()
         return
     end
 
-    for ent, _ in pairs(self.OwnerModifiedEnts) do
-        if not IsValid(ent) then continue end
-        ent:SetOwner(own)
-    end
-
     --print(rag)
     if IsValid(own) then
+
+        for ent, _ in pairs(self.OwnerModifiedEnts) do
+            if not IsValid(ent) then continue end
+            ent:SetOwner(own, true)
+        end
+
         if own:IsPlayer() then
             local ea = own:EyeAngles(true)
             ea.r = 0
             own:SetEyeAngles(ea, true)
         end
 
-        if own:GetParent() == rag then
+        if own:GetMoveParent() == rag then
             own:SetParent(nil)
             own:RemoveEffects(EF_BONEMERGE)
             own:RemoveEffects(EF_BONEMERGE_FASTCULL)
@@ -1340,17 +1346,23 @@ function ENT:OnRemove()
 
         self:RestorePlayerData()
 
+        local newPos = self.GettingUp_OwnerPos
+
+        if newPos then
+            timer.Simple(tickInterval, function()
+                if not IsValid(own) then return end
+                own:SetPos(newPos, true)
+                own:SetLocalVelocity(vector_origin)
+            end)
+        end
+
     end
-    
+
     if IsValid(rag) then
-        -- 不确定是哪个修复的bug
+        -- 看起来两个都有用
         constraint.RemoveAll(rag)
         SafeRemoveEntityDelayed(rag, tickInterval)
     end
-    --if IsValid(self.GetupAnimModel) then SafeRemoveEntityDelayed(self.GetupAnimModel, 0) end
-    --if IsValid(self.FakePlyModel) then SafeRemoveEntityDelayed(self.FakePlyModel, 0) end
-    
-    
 
 end
 
@@ -1708,6 +1720,11 @@ function ENT:Think()
         --local myMdl, animMdl = self:GetModel(), animData.Model
         local cyc = anim:GetCycle()
         local recover = in_duck and animData.Recover_Duck or animData.Recover
+
+        local inWater = rag:WaterLevel() >= 1 
+        local fakeHitPos = {
+            HitPos = rag:GetPos() - Vector(0, 0, 16)
+        }
         --print(cyc, animData.Recover[2])
 
         if cyc >= recover[2] then
@@ -1715,7 +1732,7 @@ function ENT:Think()
             mins.z = 0
             maxs.z = 0
 
-            local tr = util.TraceHull({
+            local tr = inWater and fakeHitPos or util.TraceHull({
                 start = pelvisPos + Vector(0, 0, 5),
                 endpos = pelvisPos - Vector(0, 0, 100),
                 filter = {self, rag, own},
@@ -1737,36 +1754,37 @@ function ENT:Think()
                 mins, maxs = own:GetHull()
     
                 if self.GettingUp_Crouch then
-                    local duckMins, duckMaxs = own:GetHullDuck()
+                    --local duckMins, duckMaxs = own:GetHullDuck()
 
                     --print((maxs.z - duckMaxs.z))
                     --pos.z = pos.z - (maxs.z - duckMaxs.z)
-                    mins, maxs = duckMins, duckMaxs
+                    mins, maxs = own:GetHullDuck() --duckMins, duckMaxs
                 end
-    
-                local stuckTest = util.TraceHull({
-                    start = pos,
-                    endpos = pos,
-                    filter = {self, rag, own},
-                    mins = mins,
-                    maxs = maxs,
-                })
-
-                debugoverlay.Box(pos, mins, maxs, 3, Color(255, 0, 0, 155))
-
-                if stuckTest.Hit then 
-                    pos = handleStuck(own, pos, mins, maxs)
-                    if not pos then Savee_AdvRagKnockdown_DoKnockdown(own) return end
-                end
+            else
+                mins, maxs = own:OBBMins(), own:OBBMaxs()
             end
+            local stuckTest = util.TraceHull({
+                start = pos,
+                endpos = pos,
+                filter = {self, rag, own},
+                mins = mins,
+                maxs = maxs,
+            })
+
+            debugoverlay.Box(pos, mins, maxs, 3, Color(255, 0, 0, 155))
+
+            if stuckTest.Hit then 
+                pos = handleStuck(own, pos, mins, maxs)
+                if not pos then Savee_AdvRagKnockdown_DoKnockdown(own) return end
+            end
+
+            self.GettingUp_OwnerPos = pos
             self:RemoveSelf()
-            own:SetLocalVelocity(vector_origin)
-            own:SetPos(pos, true)
 
             return
         elseif cyc >= recover[1] and self:GetParent() == rag then
 
-            local tr = util.TraceLine({
+            local tr = inWater and fakeHitPos or util.TraceLine({
                 start = pelvisPos + Vector(0, 0, 2),
                 endpos = pelvisPos - Vector(0, 0, 100),
                 filter = {rag, own}
@@ -2645,7 +2663,7 @@ function ENT:Tick()
     local rag = self:GetRagdoll()
     local mdlScale = rag.Savee_AdvRagKnockdown_ModelScale
 
-    if self.Initialized and (not self.GettingUp_SyncingToOwner and own:GetParent() ~= rag) then
+    if self.Initialized and (not self.GettingUp_SyncingToOwner and own:GetMoveParent() ~= rag) then
         self:RemoveSelf()
         return
     elseif not own:IsEffectActive(EF_BONEMERGE) then
@@ -3108,7 +3126,7 @@ function ENT:Draw(fl)
                 return
             end
 
-            if own:GetParent() ~= rag then
+            if own:GetMoveParent() ~= rag then
                 --
             end
 
@@ -3130,7 +3148,7 @@ function ENT:CustomRagRenderOverride(fl)
     if not IsValid(ctrl) then return end
     local own = ctrl:GetOwner()
     local ve = LocalPlayer():GetViewEntity()
-    if ve ~= own or not IsValid(own) or (self.Initialized and own:GetParent() ~= self) then return end
+    if ve ~= own or not IsValid(own) or (self.Initialized and own:GetMoveParent() ~= self) then return end
 
     own:SetupBones()
 

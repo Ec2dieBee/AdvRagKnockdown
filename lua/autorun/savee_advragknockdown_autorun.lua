@@ -527,7 +527,7 @@ funchooks.AddPost("Entity.GetOwner", "Savee_AdvRagKnockdown_AntiBadCollision", f
     if raw or not entTypeCheck(own) then return __undetoured(ent, inputs, own, ...) end
 
     local ctrl = getController(own)
-    if not IsValid(ctrl) then return __undetoured(ent, inputs, own, ...) end
+    if not IsValid(ctrl) or not ctrl.OwnerModifiedEnts[ent] then return __undetoured(ent, inputs, own, ...) end
 
     return __undetoured(ent, inputs, __raw(ctrl), ...)
    
@@ -701,7 +701,6 @@ funchooks.AddPost("Entity.SetPos", "Savee_AdvRagKnockdown_Sync", function(ply, i
     -- 神秘多人游戏bug
     if not IsValid(ctrl) then return __undetoured(ply, inputs, ...) end
 
-    local rag = ctrl:GetRagdoll()
     local pos = inputs[1]
 
     local oldPos = ply:GetPos()
@@ -1426,8 +1425,8 @@ if SERVER then
         --local const = constraint.AdvBallsocket(rag, rag, lArm, lHand, wtlLH, nil, 0, 0, minAng.p, minAng.y, minAng.r, maxAng.p, maxAng.y, maxAng.r, fric, fric, fric, 0, 1)
         --local _, correctedAng = LocalToWorld(vector_origin, Angle(0, 0, -90), vector_origin, lArmP:GetAngles())
         --lHandP:SetAngles(correctedAng)
-        constraint.AdvBallsocket(rag, rag, lArm, lHand, wtlLH, nil, 0, 0, minAng.p, minAng.y, minAng.r, maxAng.p, maxAng.y, maxAng.r, fric, fric, fric, 0, 1)
         rag:RemoveInternalConstraint(lHand)
+        constraint.AdvBallsocket(rag, rag, lArm, lHand, wtlLH, nil, 0, 0, minAng.p, minAng.y, minAng.r, maxAng.p, maxAng.y, maxAng.r, fric, fric, fric, 0, 1)
 
         lArmP:SetPos(oldArmPos)
         lArmP:SetAngles(oldArmAng)
