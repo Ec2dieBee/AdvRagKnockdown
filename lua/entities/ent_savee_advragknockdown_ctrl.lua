@@ -190,7 +190,7 @@ local holdTypeActs = {
     ["magic"] = ACT_HL2MP_IDLE_MAGIC,
 }
 
-local twoArmAimDelta = Vector(5, 5, -7)
+local twoArmAimDelta = Vector(3, 5, -10)
 local oneArmAimDelta = Vector(10, 5, -7)
 
 local aimPosDelta = {
@@ -469,12 +469,21 @@ end
 -- 在学校想出来的神秘IK系统
 -- 基于三角函数/余弦定理(极向还没想好但是2骨足够了)
 -- 这个故事告诉我们高中知识还是有用的
-
-local function calcBasicArmIK(armPos, handPos, pole, rotateAng, wtl)
+local bound = Vector(2, 2, 2)
+local function calcBasicArmIK(armPos, handPos, pole, rotateAng, wtl, filter)
     -- 理论上是个位置
     pole = pole or 0
     rotateAng = rotateAng or Angle(0, 0, 0)
 
+    if filter then
+        handPos = util.TraceHull({
+            start = armPos,
+            endpos = handPos,
+            filter = filter,
+            mins = -bound,
+            maxs = bound,
+        }).HitPos
+    end
     -- 事实上我的数学是一坨史, 但是这些玩意书上都有.jpg
     local c = handPos:DistToSqr(armPos)
     local a, b = 11.69, 11.48 
@@ -628,11 +637,11 @@ local anims = {
 
             -- PhysControl Parameter
             -- {startCycle, EndCycle}
-            Recover = {0.8, 0.9},
+            Recover = {0.7, 0.8},
             Recover_Duck = {0.4, 0.5},
             --pitchmin, pitchmax, 翻转
             Pitch = {-90, 90, true},
-            GetUp_Stand = 0.8,
+            GetUp_Stand = 0.7,
             GetUp_Duck = 0.6,
         },
         -- 面朝地
@@ -644,10 +653,10 @@ local anims = {
             StartCycle = 0.3,
             -- PhysControl Parameter
             -- {startCycle, EndCycle}
-            Recover = {0.8, 0.9},
+            Recover = {0.7, 0.8},
             Recover_Duck = {0.4, 0.5},
             Pitch = {-90, 90},
-            GetUp_Stand = 0.8,
+            GetUp_Stand = 0.7,
             GetUp_Duck = 0.6,
         },
     },
@@ -686,13 +695,6 @@ local function modifyRagdoll(rag, pObjs, ownVel)
     
     if CLIENT or not IsValid(rag) then return end
     local ctrl = rag.Savee_AdvRagKnockdown_Controller
-    
-    local angMax = Angle(65, 80, 80)
-    
-    --print(constraint.Find(rag, rag, "AdvBallsocket", rag:LookupBone("ValveBiped.Bip01_L_Forearm"), rag:LookupBone("ValveBiped.Bip01_L_Hand")))
-    
-    --PrintTable(constraint.FindConstraints(rag, "AdvBallsocket"))
-    
     local oldVels = {}
 
     -- dumbass_define_animandphys.qci
@@ -703,8 +705,7 @@ local function modifyRagdoll(rag, pObjs, ownVel)
         pObj:EnableMotion(false)
     end
 
-    Savee_AdvRagKnockdown_ReplaceRagConstraint(rag, pObjs, "ValveBiped.Bip01_L_Hand", "ValveBiped.Bip01_L_Forearm", -angMax, angMax, 0)
-    Savee_AdvRagKnockdown_ReplaceRagConstraint(rag, pObjs, "ValveBiped.Bip01_R_Hand", "ValveBiped.Bip01_R_Forearm", -angMax, angMax, 0)
+    Savee_AdvRagKnockdown_ReplaceRagConstraints(rag, pObjs)
     
     for i, data in pairs(pObjs) do
         local pObj = data.pObj
@@ -871,10 +872,9 @@ function ENT:Initialize()
     end
     --rag:SetParent(nil)
     --rag:RemoveEffects(EF_BONEMERGE)
-    rag:AddEffects(EFL_DONTWALKON)
-    rag:AddEffects(EFL_DONTBLOCKLOS)
-    rag:AddFlags(FL_NOTARGET)
-    rag:SetCollisionGroup(own:IsPlayer() and COLLISION_GROUP_PLAYER or COLLISION_GROUP_DEBRIS_TRIGGER)
+
+    rag:AddEFlags(EFL_DONTBLOCKLOS)
+    rag:SetCollisionGroup(own:IsPlayer() and COLLISION_GROUP_PLAYER or COLLISION_GROUP_NPC_ACTOR)
 
     if own:IsNPC() then constraint.NoCollide(own, rag, 0, 0, false) end
 
@@ -1347,8 +1347,10 @@ function ENT:OnRemove()
         self:RestorePlayerData()
 
         local newPos = self.GettingUp_OwnerPos
-
+        
         if newPos then
+            own:SetPos(newPos, true)
+            own:SetLocalVelocity(vector_origin)
             timer.Simple(tickInterval, function()
                 if not IsValid(own) then return end
                 own:SetPos(newPos, true)
@@ -1514,12 +1516,14 @@ function ENT:Think()
 
     -- NPCNPCNPC
     if not isPly then
+        ---@cast own NPC
+
         --print(self:GetRArmDelta())
         local goal = own:GetCurWaypointPos()
         if goal == vector_origin then goal = own:GetGoalPos() end
+
         local hasGoal = self:GetCachedVar("NPC_HasMoveGoal", goal ~= vector_origin)
-        --self.Caches.NPC_MoveGoal = hasGoal and goal
-        --self.Caches.NPC_HasMoveGoal = hasGoal
+    
         if hasGoal then
             self.Caches.NPC_LastGoalUpdate = ct --hasGoal and goal
             self:SetCachedVar("NPC_MoveGoal", goal, 1)
@@ -1555,15 +1559,27 @@ function ENT:Think()
         --ListConditions(own)
         
         local ang = Angle(0, aea.y, 0)
+        own:SetAngles(ang)
+
+
         --own:SetLocalAngles(ang)
         --own:SetPos(rag:GetPos() - own:OBBCenter(), true)
 
         if consc < 45 then
-            own:ClearSchedule()
-            --own:ClearGoal()
-            --own:SetActivity(ACT_IDLE)
             own:NextThink(ct + 0.15)
-            --print(1)
+
+            if not self.NPCState_Unconsciousness and not own:HasCondition(COND.NPC_FREEZE) then
+                self.NPCState_IsGaged = own:HasSpawnFlags(SF_NPC_GAG)
+                self.NPCState_Unconsciousness = true
+
+                own:SetCondition(COND.NPC_FREEZE)
+            end
+        elseif self.NPCState_Unconsciousness then
+            if self.NPCState_IsGaged then
+                self.NPCState_IsGaged = nil
+            end
+            own:SetCondition(COND.NPC_UNFREEZE)
+            self.NPCState_Unconsciousness = nil
         end
 
     end
@@ -1677,27 +1693,46 @@ function ENT:Think()
     end
 
     if not self:ShouldUseCachedVar("NearWalling") then
-        local dist = 32 * mdlScale
-        local tr = util.QuickTrace(eyepos, aea:Forward() * dist, rag)
+        local hullsize = Vector(5, 5, 5) / mdlScale
+        local pos, ang = getPhysBonePosAng(pObjs, "ValveBiped.Bip01_Spine2")
+        local dist = 16 * mdlScale
+
+        local st, ed = pos, pos - ang:Right() * dist
+        local tr = util.TraceHull({
+            start = st,
+            endpos = ed,
+            mins = -hullsize,
+            maxs = hullsize,
+            filter = {own, rag},
+        })
+
+        --[[debugoverlay.Box(st, -hullsize, hullsize, 0.3, Color(155, 155, 155, 155))
+        debugoverlay.Box(ed, -hullsize, hullsize, 0.3, Color(155, 155, 155, 155))]]
         --print((64 - tr.HitPos:Distance(eyepos)) / 64)
-        self:SetCachedVar("NearWalling", math.Clamp((dist - tr.HitPos:Distance(eyepos)) / dist, 0.1, 1.1), 0.2)
+        self:SetCachedVar("NearWalling", math.Clamp((dist - tr.HitPos:Distance(pos)) / dist * 2, 0, 1), 0.2)
     end
 
     -- 头: 哈哈没想到吧哥是甲级战犯
     if not self:ShouldUseCachedVar("HeadWalling") then
         local hullsize = Vector(5, 5, 5) / mdlScale
-        local dist = 32 * mdlScale
-        local pos, ang = getPhysBonePosAng(pObjs, "ValveBiped.Bip01_Head1")
+        local dist = 2 * mdlScale
+        local pos = getPhysBonePosAng(pObjs, "ValveBiped.Bip01_Head1")
+
+        local st, ed = pos, pos + aea:Up() * dist
+        --[[debugoverlay.Box(st, -hullsize, hullsize, 0.3, Color(155, 155, 155, 155))
+        debugoverlay.Box(ed, -hullsize, hullsize, 0.3, Color(155, 155, 155, 155))]]
+
         local tr = util.TraceHull({
-            start = pos,
-            endpos = pos + ang:Forward() * dist,
+            start = st,
+            endpos = ed,
+            mins = -hullsize,
             maxs = hullsize,
-            mins = hullsize,
             filter = {own, rag},
         })
-        local var = math.Clamp((dist - tr.HitPos:Distance(pos)) / dist, 0, 1.1) * 2
+        local var = math.Clamp((dist - tr.HitPos:Distance(pos)) / dist, 0, 1) * 2
         --print(var, tr.Entity, tr.HitWorld)
         self:SetCachedVar("HeadWalling", var, 0.2)
+
     end
 
     if consc < 25 then
@@ -1892,30 +1927,16 @@ local infos = {
     "Weapon",
 }
 
-local bodySpeedForceMul = 1
-local bodyAngForceMul = 1
-local armSpeedForceMul = 1
-local armAngForceMul = 1
-
 local legDelta = 35
-
-local torsoUseMass = true
-local torsoMoveUseMass = true
-local headUseMass = true
-local handUseMass = true
-local handAimUseMass = true
-local pelvisUseMass = false
-local legUseMass = true
-local getupUseMass = true
 
 -- 这样你就不必来来回回
 
-local torsoang, torsoangdamp, torsospd, torsospddamp, torsodampfactor, torsodelta = 250, 150, 0, 0, 1, isSP and 0.07 or 0.1
+local torsoang, torsoangdamp, torsospd, torsospddamp, torsodampfactor, torsodelta = 350, 550, 0, 0, 0.6, 0.1
 --local torsomovespd, torsomovespddamp, torsomovespddelta = 450, 450, 0.2
-local headang, headangdamp, headspd, headspddamp, headdampfactor, headdelta = 100, 200, 0, 0, 1, 0.05
-local handang, handangdamp, handspd, handspddamp, handdampfactor, handdelta = 250, 250, 0, 0, 0.8, 0.1
-local handaimang, handaimangdamp, handaimspd, handaimspddamp, handaimdampfactor, handaimdelta = 250, 150, 0, 0, 0.8, isSP and 0.05 or 0.08
-local armaimang, armaimangdamp, armaimspd, armaimspddamp, armaimdampfactor, armaimdelta = 350, 1250, 0, 0, 0.4, 0.1
+local headang, headangdamp, headspd, headspddamp, headdampfactor, headdelta = 30, 50, 0, 0, 1, 0.1
+local handang, handangdamp, handspd, handspddamp, handdampfactor, handdelta = 350, 250, 150, 0, 0.8, 0.1
+local handaimang, handaimangdamp, handaimspd, handaimspddamp, handaimdampfactor, handaimdelta = 450, 350, 0, 0, 0.8, 0.1
+local armaimang, armaimangdamp, armaimspd, armaimspddamp, armaimdampfactor, armaimdelta = 200, 200, 0, 0, 0.8, 0.1
 local pelvisang, pelvisangdamp, pelvisspd, pelvisspddamp, pelvisdampfactor, pelvisdelta = 0, 10, 0, 0, 0.8, 0.15
 local legang, legangdamp, legspd, legspddamp, legsdampfactor, legsdelta = 25, 15, 0, 0, 0.5, 0.2
 
@@ -1993,44 +2014,6 @@ function ENT:DealWithAnims(isPly, aimingWeapon, noArm, wepHT, isMeleeHT)
     local pObjs = self.RagPObjs
     local shadowCtrls = {}
 
-    --print(numpObjs)
-
-    --[[if not next(pObjs) or self.RagLastModel ~= rag:GetModel() then
-        pObjs = {}
-        -- Miku兼容
-        for i = 0, rag:GetBoneCount() - 1 do
-            
-            local pID = rag:TranslateBoneToPhysBone(i)
-            local pObj = rag:GetPhysicsObjectNum(pID)
-            --pObj:SetMaterial("Player")
-
-            ---@type PhysObj
-            pObjs[rag:GetBoneName(i)] = {
-                id = pID,
-                pObj = pObj,
-                physBone = rag:TranslatePhysBoneToBone(pID) == i,
-            }
-
-        end
-
-        self.RagLastModel = rag:GetModel()
-        self.RagPObjs = pObjs
-
-    end]]
-
-    --[[for i = 0, numpObjs - 1 do
-
-        local pObj = rag:GetPhysicsObjectNum(i)
-        --pObj:SetDamping(0, 10)
-        
-        --[[---@type PhysObj
-        pObjs[rag:GetBoneName(rag:TranslatePhysBoneToBone(i))] = {
-            id = i,
-            pObj = rag:GetPhysicsObjectNum(i),
-        }]
-
-    end]]
-
     if not next(pObjs) then return end
     if not pObjs["ValveBiped.Bip01_Spine2"] then pObjs["ValveBiped.Bip01_Spine2"] = pObjs["ValveBiped.Bip01_Spine1"] end
 
@@ -2051,24 +2034,12 @@ function ENT:DealWithAnims(isPly, aimingWeapon, noArm, wepHT, isMeleeHT)
         eyeang = rag:GetAttachment(eyeatt).Ang        
     end
 
-    --[[for i = 0, rag:GetPhysicsObjectCount() - 1 do
-        local pObj = rag:GetPhysicsObjectNum(i)
-        pObj:ApplyTorqueCenter(-pObj:GetAngleVelocity() * tickInterval * pObj:GetMass())
-        --pObj:ApplyForceCenter(-pObj:GetVelocity() * tickInterval * pObj:GetMass())
-    end]]
-
-    --local posdelta = own:EyePos() - own:GetPos()
-
-    --print(1)
-
-    --AddOriginToPVS(eyepos)
-
-    --local head = pObjs["ValveBiped.Bip01_Head1"] and pObjs["ValveBiped.Bip01_Head1"].pObj
-    --local headMass = head and head:GetMass() or 0
-
-    --do return end
-
-    --self:SetAimingWeapon(true)
+    local torsoUseMass = true
+    local headUseMass = true
+    local handUseMass = true
+    local handAimUseMass = true
+    local pelvisUseMass = false
+    local legUseMass = true
     -- 矫正姿势
     if in_duck then
 
@@ -2142,12 +2113,21 @@ function ENT:DealWithAnims(isPly, aimingWeapon, noArm, wepHT, isMeleeHT)
 
     if not IsValid(fakePly) then return end
 
-    local ragHeadPos, ragHeadAng = getPhysBonePosAng(pObjs, "ValveBiped.Bip01_Head1")
-    local ragLUArmPos, ragLUArmAng = getPhysBonePosAng(pObjs, "ValveBiped.Bip01_L_UpperArm")
-    local ragRUArmPos, ragRUArmAng = getPhysBonePosAng(pObjs, "ValveBiped.Bip01_R_UpperArm")
-    local animHeadPos, animHeadAng = fakePly:GetBonePosition(fakePly:LookupBone("ValveBiped.Bip01_Head1") or 0)
+    local ragHeadPos = getPhysBonePosAng(pObjs, "ValveBiped.Bip01_Head1")
+    local ragLUArmPos = getPhysBonePosAng(pObjs, "ValveBiped.Bip01_L_UpperArm")
+    local ragRUArmPos = getPhysBonePosAng(pObjs, "ValveBiped.Bip01_R_UpperArm")
+    local animHeadPos = fakePly:GetBonePosition(fakePly:LookupBone("ValveBiped.Bip01_Head1") or 0)
     local animLHandPos, animLHandAng = fakePly:GetBonePosition(fakePly:LookupBone("ValveBiped.Bip01_L_Hand"))
     local animRHandPos, animRHandAng = fakePly:GetBonePosition(fakePly:LookupBone("ValveBiped.Bip01_R_Hand"))
+
+    local nearwalling = self:GetCachedVar("NearWalling")
+    local nearwallMul = (1 - nearwalling)
+
+    local torsoAngle = torso:GetAngles()
+    _, torsoAngle = LocalToWorld(vector_origin, Angle(0, 90, 90), vector_origin, torsoAngle)
+    local exRotate = torsoAngle.r
+    
+    local var = 50 + 25 * nearwalling
 
     if aimingWeapon and not noArm then
 
@@ -2167,7 +2147,7 @@ function ENT:DealWithAnims(isPly, aimingWeapon, noArm, wepHT, isMeleeHT)
 
         local angFace = Angle(-90, -90, 180)
         local angFaceTorso = Angle(-90, -90, 0)
-        
+
         --print
         --print(torso)
         shadowCtrls["ValveBiped.Bip01_Spine2"] = {
@@ -2183,17 +2163,17 @@ function ENT:DealWithAnims(isPly, aimingWeapon, noArm, wepHT, isMeleeHT)
             addMass = torsoUseMass,
         }
 
-        
+        local hw = self:GetCachedVar("HeadWalling")
         shadowCtrls["ValveBiped.Bip01_Head1"] = {
             --secondstoarrive = 0.15,
             
             angle = angFace,
             maxspeed = headspd,
             maxspeeddamp = headspddamp,
-            maxangular = headang * (1 - self:GetCachedVar("HeadWalling")),
-            maxangulardamp = headangdamp * (1 - self:GetCachedVar("HeadWalling")),
+            maxangular = headang * (1.2 - hw),
+            maxangulardamp = headangdamp * (1.2 - hw),
             dampfactor = headdampfactor,
-            delta = headdelta,
+            delta = 0.01 + headdelta * 2 * hw,
             addMass = headUseMass,
         }
         
@@ -2300,17 +2280,10 @@ function ENT:DealWithAnims(isPly, aimingWeapon, noArm, wepHT, isMeleeHT)
             -- 需要检测区分下文
             rhToLocalPos, rhToLocalAng = LocalToWorld(rhToLocalPos, rhToLocalAng, ragHeadPos, faceAng)
 
-            -- ToDo: 没用了就杀了
-            --[[if isMeleeHT then
-                rhToLocalPos = rhToLocalPos
-            else]]
-            local nearwalling = self:GetCachedVar("NearWalling")
-            local nearwallMul = (1 - nearwalling)
-    
             if not isMeleeHT then
                 -- 歪打正着
                 local wepDelta = (aimPosDelta[wepHT] or twoArmAimDelta)
-                local delta = aea:Forward() * wepDelta.x * nearwallMul * (isPly and 1 or deltaedHT[wepHT] and 1.2 or 1.5) + aea:Right() * wepDelta.y * (isPly and 1 or wepDelta == twoArmAimDelta and 2 or 1) + aea:Up() * wepDelta.z * (isPly and 1 or 1)
+                local delta = aea:Forward() * wepDelta.x * (isPly and 1 or deltaedHT[wepHT] and 1.2 or 1.5) + aea:Right() * wepDelta.y * (isPly and 1 or wepDelta == twoArmAimDelta and 2 or 1) + aea:Up() * wepDelta.z
                 --delta = delta * mdlScale
                 rhToLocalPos = eyepos + delta
                 --rhToLocalPos = eyepos + aea:Forward() * wepDelta.x + aea:Right() * wepDelta.y + aea:Up() * wepDelta.z
@@ -2319,26 +2292,31 @@ function ENT:DealWithAnims(isPly, aimingWeapon, noArm, wepHT, isMeleeHT)
             local _, rHandFaceAng = LocalToWorld(vector_origin, Angle(5, 0, 180),vector_origin, aea)
             
             rHandFaceAng = LerpAngle(0.6, rhToLocalAng, rHandFaceAng)
-            --local _, torsoFaceAng = LocalToWorld(vector_origin, Angle(90, 0, -90), vector_origin, aea)
             lhToLocalPos, lhToLocalAng = LocalToWorld(lhToLocalPos, lhToLocalAng, rhToLocalPos, rHandFaceAng)
-            -- 需要检测区分下文
+            local dist = 10
 
-            local torsoAngle = torso:GetAngles()
-            _, torsoAngle = LocalToWorld(vector_origin, Angle(0, 90, 90), vector_origin, torsoAngle)
-            local exRotate = torsoAngle.r
-            
-            local var = 50 - 25 * nearwalling
+            local larmWalling = util.TraceLine({
+                start = ragLUArmPos,
+                endpos = ragLUArmPos - (aea:Right() - aea:Forward() * 2) * dist,
+                filter = own,
+            }).HitPos:Distance(ragLUArmPos) / dist - 1
+            local rarmWalling = util.TraceLine({
+                start = ragRUArmPos,
+                endpos = ragRUArmPos + (aea:Right() + aea:Forward() * 2) * dist,
+                filter = own,
+            }).HitPos:Distance(ragRUArmPos) / dist - 1
+
 
             -- speeddamp是他妈一坨屎, 这就是为什么我们要做100%橙汁(?????)啊不对角度运算
-            local angLUpperArm, angLForeArm = calcBasicArmIK(ragLUArmPos, lhToLocalPos, var + exRotate, Angle(0, 0, -90), aea)
-            local angRUpperArm, angRForeArm = calcBasicArmIK(ragRUArmPos, rhToLocalPos, -var + exRotate, Angle(0, 0, -90), aea)
+            local angLUpperArm, angLForeArm = calcBasicArmIK(ragLUArmPos, lhToLocalPos, var * larmWalling + exRotate, Angle(0, 0, -90), aea, own)
+            local angRUpperArm, angRForeArm = calcBasicArmIK(ragRUArmPos, rhToLocalPos, -var * rarmWalling + exRotate, Angle(0, 0, -90), aea, own)
 
             shadowCtrls["ValveBiped.Bip01_L_UpperArm"] = {
                 --secondstoarrive = tickInterval / 10,
                 angle = angLUpperArm,
                 maxangular = armaimang,
                 maxangulardamp = armaimangdamp,
-                dampfactor = armaimdampfactor * nearwallMul,
+                dampfactor = armaimdampfactor,
                 delta = armaimdelta,
                 addMass = handAimUseMass,
             }
@@ -2347,7 +2325,7 @@ function ENT:DealWithAnims(isPly, aimingWeapon, noArm, wepHT, isMeleeHT)
                 angle = angLForeArm,
                 maxangular = armaimang,
                 maxangulardamp = armaimangdamp,
-                dampfactor = armaimdampfactor * nearwallMul,
+                dampfactor = armaimdampfactor,
                 delta = armaimdelta,
                 addMass = handAimUseMass,
             }
@@ -2356,7 +2334,7 @@ function ENT:DealWithAnims(isPly, aimingWeapon, noArm, wepHT, isMeleeHT)
                 angle = angRUpperArm,
                 maxangular = armaimang,
                 maxangulardamp = armaimangdamp,
-                dampfactor = armaimdampfactor * nearwallMul,
+                dampfactor = armaimdampfactor,
                 delta = armaimdelta,
                 addMass = handAimUseMass,
             }
@@ -2365,7 +2343,7 @@ function ENT:DealWithAnims(isPly, aimingWeapon, noArm, wepHT, isMeleeHT)
                 angle = angRForeArm,
                 maxangular = armaimang,
                 maxangulardamp = armaimangdamp,
-                dampfactor = armaimdampfactor * nearwallMul,
+                dampfactor = armaimdampfactor,
                 delta = armaimdelta,
                 addMass = handAimUseMass,
             }
@@ -2379,6 +2357,7 @@ function ENT:DealWithAnims(isPly, aimingWeapon, noArm, wepHT, isMeleeHT)
             _, lhToLocalAng = WorldToLocal(vector_origin, lhToLocalAng, vector_origin, aea)
             shadowCtrls["ValveBiped.Bip01_L_Hand"] = {
                 --secondstoarrive = tickInterval / 10,
+                pos = lhToLocalPos,
                 angle = lhToLocalAng,
                 maxspeed = handaimspd,
                 maxspeeddamp = handaimspddamp,
@@ -2390,6 +2369,7 @@ function ENT:DealWithAnims(isPly, aimingWeapon, noArm, wepHT, isMeleeHT)
             }
             shadowCtrls["ValveBiped.Bip01_R_Hand"] = {
                 --secondstoarrive = tickInterval / 10,
+                pos = rhToLocalPos,
                 angle = Angle(5, 0, 180),
                 maxspeed = handaimspd,
                 maxspeeddamp = handaimspddamp,
@@ -2454,15 +2434,15 @@ function ENT:DealWithAnims(isPly, aimingWeapon, noArm, wepHT, isMeleeHT)
 
             local dir = not isPly and (caches.NPC_MoveGoal - eyepos):GetNormalized() or aea:Forward()
             local ang = Angle(-5, 0, 90)
-            local targetPos = eyepos + (dir * 30 - eyeang:Up() * (isPly and 3 or 10 + caches.NPC_MoveGoal:Distance(eyepos) / 10)) * mdlScale
+            local targetPos = eyepos + (dir * 30 - eyeang:Up() * (isPly and 2 or 10 + caches.NPC_MoveGoal:Distance(eyepos) / 10)) * mdlScale
 
             if not IsValid(self.LHand_Grabbing) then
-                local angLUpperArm, angLForeArm = calcBasicArmIK(ragLUArmPos, targetPos, 0, Angle(0, 0, -90), aea)
+                local angLUpperArm, angLForeArm = calcBasicArmIK(ragLUArmPos, targetPos, var + exRotate, Angle(0, 0, -90), aea)
 
                 shadowCtrls["ValveBiped.Bip01_L_UpperArm"] = {
                     --secondstoarrive = tickInterval / 10,
                     angle = angLUpperArm,
-                    maxangular = armaimang,
+                    maxangular = armaimang * 0.01,
                     maxangulardamp = armaimangdamp,
                     dampfactor = armaimdampfactor,
                     delta = armaimdelta,
@@ -2471,7 +2451,7 @@ function ENT:DealWithAnims(isPly, aimingWeapon, noArm, wepHT, isMeleeHT)
                 shadowCtrls["ValveBiped.Bip01_L_Forearm"] = {
                     --secondstoarrive = tickInterval / 10,
                     angle = angLForeArm,
-                    maxangular = armaimang,
+                    maxangular = armaimang * 0.01,
                     maxangulardamp = armaimangdamp,
                     dampfactor = armaimdampfactor,
                     delta = armaimdelta,
@@ -2511,16 +2491,18 @@ function ENT:DealWithAnims(isPly, aimingWeapon, noArm, wepHT, isMeleeHT)
             pos = pos - Vector(0, 0, 50)
         end
         if lhand then
+
+
             self:SetLArmDelta(math.Approach(self:GetLArmDelta(), 1, 0.2))
             local ang = Angle(-5, 0, 90)
 
             if not IsValid(self.LHand_Grabbing) then
-                local angLUpperArm, angLForeArm = calcBasicArmIK(ragLUArmPos, pos - right, 0, Angle(0, 0, -90), aea)
+                local angLUpperArm, angLForeArm = calcBasicArmIK(ragLUArmPos, pos - right, var + exRotate, Angle(0, 0, -90), aea)
 
                 shadowCtrls["ValveBiped.Bip01_L_UpperArm"] = {
                     --secondstoarrive = tickInterval / 10,
                     angle = angLUpperArm,
-                    maxangular = armaimang,
+                    maxangular = armaimang * 0.01,
                     maxangulardamp = armaimangdamp,
                     dampfactor = armaimdampfactor,
                     delta = armaimdelta,
@@ -2529,7 +2511,7 @@ function ENT:DealWithAnims(isPly, aimingWeapon, noArm, wepHT, isMeleeHT)
                 shadowCtrls["ValveBiped.Bip01_L_Forearm"] = {
                     --secondstoarrive = tickInterval / 10,
                     angle = angLForeArm,
-                    maxangular = armaimang,
+                    maxangular = armaimang * 0.01,
                     maxangulardamp = armaimangdamp,
                     dampfactor = armaimdampfactor,
                     delta = armaimdelta,
@@ -2555,12 +2537,12 @@ function ENT:DealWithAnims(isPly, aimingWeapon, noArm, wepHT, isMeleeHT)
             local ang = Angle(-5, 0, (noArm or isMeleeHT) and 90 or 180)
             
             if not IsValid(self.RHand_Grabbing) then
-                local angRUpperArm, angRForeArm = calcBasicArmIK(ragRUArmPos, pos + right, 0, Angle(0, 0, -90), aea)
+                local angRUpperArm, angRForeArm = calcBasicArmIK(ragRUArmPos, pos + right, -var + exRotate, Angle(0, 0, -90), aea)
 
                 shadowCtrls["ValveBiped.Bip01_R_UpperArm"] = {
                     --secondstoarrive = tickInterval / 10,
                     angle = angRUpperArm,
-                    maxangular = armaimang,
+                    maxangular = armaimang * 0.01,
                     maxangulardamp = armaimangdamp,
                     dampfactor = armaimdampfactor,
                     delta = armaimdelta,
@@ -2569,7 +2551,7 @@ function ENT:DealWithAnims(isPly, aimingWeapon, noArm, wepHT, isMeleeHT)
                 shadowCtrls["ValveBiped.Bip01_R_Forearm"] = {
                     --secondstoarrive = tickInterval / 10,
                     angle = angRForeArm,
-                    maxangular = armaimang,
+                    maxangular = armaimang * 0.01,
                     maxangulardamp = armaimangdamp,
                     dampfactor = armaimdampfactor,
                     delta = armaimdelta,
@@ -2635,9 +2617,9 @@ function ENT:DealWithAnims(isPly, aimingWeapon, noArm, wepHT, isMeleeHT)
         if in_duck then
             ang:RotateAroundAxis(Vector(0, -1, 0), 25)
         elseif self.LowPose then --IsValid(wep) and wep.ARC9 and wep:GetBipod() then
-            ang:RotateAroundAxis(Vector(0, -1, 0), -30)
+            ang:RotateAroundAxis(Vector(0, -1, 0), -55)
         end
-        --ang:RotateAroundAxis(aea:Right(), -5)
+
     end
 
     self.ShadowCtrlData = shadowCtrls
@@ -2713,11 +2695,9 @@ function ENT:Tick()
     end
 
     if not isPly then
-        eyepos = eyepos - own:GetInternalVariable("m_HackedGunPos") or vector_origin
-        own:SetPos(eyepos, true)
-    else
-        own:SetPos(eyepos + (aea:Forward() * 8) * math.max(1, mdlScale), true)
+        eyepos = eyepos - (own:GetInternalVariable("m_HackedGunPos") or vector_origin)
     end
+    own:SetPos(eyepos + (aea:Forward() * (isPly and 8 or 10)) * math.max(1, mdlScale), true)
 
     local in_forward = not isPly and caches.NPC_HasMoveGoal or self:HasKeyInput(IN_FORWARD)
     local in_back = self:HasKeyInput(IN_BACK)
@@ -3050,13 +3030,9 @@ function ENT:Tick()
 
 
     -- 应用最后的结果, 用Table方便改, 真的是太棒了
-
     --self:SetStamina(0)
 
     local forceMul = (1 + math.max(extrapObjs / 5, 0)) * math.min(1.5, self:GetStamina() / 60)
-
-    --print(forceMul)
-    local p, y, r = aea:Right(), aea:Forward(), aea:Up()
     for bName, data in pairs(shadowCtrls) do
         if not pObjs[bName] or not IsValid(pObjs[bName].pObj) then continue end
         --print(bName, data.angle)
@@ -3067,7 +3043,6 @@ function ENT:Tick()
         local pObj = pObjs[bName].pObj
         data.secondstoarrive = tickInterval
         local mass = pObj:GetMass()
-        --print(mass, bName)
 
         for _, k in ipairs(shadowDatas) do
             data[k] = (data[k] or 0) * forceMul * (data.addMass and mass or 1)
@@ -3078,9 +3053,7 @@ function ENT:Tick()
 
         pObj:Wake()
         pObj:ComputeShadowControl(data)
-        --pObj:Sleep()
     end
-
 end
 
 if SERVER then return end
@@ -3324,7 +3297,10 @@ function ENT:CalcView(ply, pos, ang, fov)
 
     if IsValid(wep) then
         if wep.CalcView then
-            pos, ang, fov = wep:CalcView(ply, eyepos, ang, fov)
+            local newPos, newAng, newFov = wep:CalcView(ply, eyepos, ang, fov)
+            pos = newPos or pos
+            ang = newAng or ang
+            fov = newFov or fov
         end
         --print(1)
 
@@ -3406,7 +3382,7 @@ function ENT:CalcViewModelView(wep, vm, oldPos, oldAng, pos, ang)
 
     local lpos, lang = WorldToLocal(pos, ang, oldPos, oldAng)
 
-    local lea = self.LastEyeAng  --self:GetAimEyeAngles()
+    local lea = self.LastEyeAng  or self:GetAimEyeAngles()
     local aeyeang = Angle(lea.x, lea.y, lea.r)
     --aeyeang:Normalize()
 

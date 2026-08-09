@@ -11,6 +11,8 @@
 -- 2026/5/17 这一切全他妈关于速度 你想要留下你的名字就必须快点, 是的这都关于名头, 你第一个弄出来这个名头就是你的
 -- @RagKnockdown @MPNKnockdown(RagKnockdown的更全的老版本, 支持ClassicKnockdown(ZSKnockdown), 这是我的命名)
 -- TODO: SANITY CHECK, 如果有更多需要读CTRL的玩意
+-- 
+-- 2026/8/7: 观前提醒: 本插件完全抄袭了RagKnockdown, 就连名字也一样
 
 
 AddCSLuaFile()
@@ -21,22 +23,30 @@ SAVEE_ADVRAGKNOCKDOWN_CONTROLLERS = SAVEE_ADVRAGKNOCKDOWN_CONTROLLERS or {}
 local cvPrefix = "savee_advragknockdown_"
 local cvTags = {FCVAR_ARCHIVE,FCVAR_REPLICATED}
 
--- 证明我抄袭了RagKnockdown的有力证据 7.25: 现在没有了
+-- 证明我抄袭了RagKnockdown的有力证据 7.25: 现在没有了 8.7: 你要不看看上面呢
 local cv_kd_enabled = CreateConVar(cvPrefix .. "enabled", 1, cvTags, "激活整个插件 *警告! 哪怕这个插件被禁用 某些hook的运算也是会照常运行的!*", 0, 1)
 local cv_kd_enabled_ply = CreateConVar(cvPrefix .. "enableply", 1, cvTags, "对玩家启用击倒", 0, 1)
 local cv_kd_enabled_npc = CreateConVar(cvPrefix .. "enablenpc", 1, cvTags, "对NPC启用击倒", 0, 1)
 
+local cv_kd_playdead_enabled = CreateConVar(cvPrefix .. "playdead_enabled", 1, cvTags, "激活假死", 0, 1)
+local cv_kd_playdead_enabled_ply = CreateConVar(cvPrefix .. "playdead_enableply", 1, cvTags, "对玩家启用假死", 0, 1)
+local cv_kd_playdead_enabled_npc = CreateConVar(cvPrefix .. "playdead_enablenpc", 1, cvTags, "对NPC启用假死", 0, 1)
+
 local cv_kd_knockdown_plyinveh = CreateConVar(cvPrefix .. "knockdown_playerinvehicle", 1, cvTags, "是否击倒在载具内的玩家(如果玩家在车里则试图让他们离开载具, 如果他们能)", 0, 1)
+
+local cv_kd_knockdown_defaultbehaviour = CreateConVar(cvPrefix .. "knockdown_defaultbehaviour", 1, cvTags, "启用默认的击倒检测, 如果你有什么东西对击倒检测做了彻底改变可以关掉", 0, 1)
+local cv_kd_knockdown_percentdamage_enabled = CreateConVar(cvPrefix .. "knockdown_percentdamage_enabled", 1, cvTags, "允许在伤害大于玩家最大生命百分比时击倒玩家", 0, 1)
+local cv_kd_knockdown_percentdamage = CreateConVar(cvPrefix .. "knockdown_percentdamage", 0.5, cvTags, "击倒玩家所需的伤害百分比, 请注意 如果其它条件满足也是可以击倒的", 0, 1)
 local cv_kd_knockdown_mindamage = CreateConVar(cvPrefix .. "knockdown_mindamage", 10, cvTags, "击倒玩家最小所需的伤害, 请注意 如果力度足够也是可以击倒的", 0)
 local cv_kd_knockdown_mindamageforce = CreateConVar(cvPrefix .. "knockdown_mindamageforce", 2500, cvTags, "击倒玩家最小所需的伤害力度, 请注意 如果伤害足够也是可以击倒的", 0)
 
 local cv_kd_damagecalc_usetakedamage = CreateConVar(cvPrefix .. "knockdown_usetakedamage", 0, cvTags, "使用TakeDamageInfo并更进一步修改BulletTable, 可能会出现没受到伤害且力度不够时仍被击倒的情况", 0, 1)
 
 local cv_kd_ctrl_useheadang = CreateConVar(cvPrefix .. "control_useheadangles", 0, cvTags, "在玩家转动视角时使用玩家目前的头部朝向计算, 可能会导致无法舒适翻滚", 0, 1)
-local cv_kd_ctrl_luacode_uselocaleyeangles = CreateConVar(cvPrefix .. "control_luacode_uselocaleyeangles", 1, cvTags, "[手感][代码相关] 将要设置的EyeAngles\"局部化\"(经过Roll旋转), 可以解决部分武器包的武器上跳问题, 但可能有其它奇怪的现象", 0, 1)
+local cv_kd_ctrl_luacode_uselocaleyeangles = CreateConVar(cvPrefix .. "control_luacode_uselocaleyeangles", 1, cvTags, "[手感][代码相关] 将要设置的EyeAngles\"局部化\"(经过Roll旋转), 可以解决部分武器包的武器后坐力垂直于地面的问题, 但可能有其它奇怪的现象", 0, 1)
 
 local cv_kd_perf_luacode_nexttick = CreateConVar(cvPrefix .. "performance_luacode_nexttick", 0.01, cvTags, "[性能][代码相关] 下次统一运行控制器Tick()的时间, 这个值越大布娃娃效果越拉跨(但性能会好点我猜), 不建议大于0.03", 0)
-local cv_kd_perf_luacode_tracelevel = CreateConVar(cvPrefix .. "performance_luacode_tracelevel", 2, cvTags, "[性能][代码相关] 查找Trace的层数, 越高越\"广泛\", 操作涉及到布娃娃的面越广, 但有潜在的性能消耗", 0)
+local cv_kd_perf_luacode_tracelevel = CreateConVar(cvPrefix .. "performance_luacode_tracelevel", 4, cvTags, "[性能][代码相关] 查找Trace的层数, 越高越\"广泛\", 操作涉及到布娃娃的面越广, 但有潜在的性能消耗(低于4的话工具枪无法选择布娃娃)", 0)
 --local cv_kd_perf_luacode_usecustomdraw = CreateConVar(cvPrefix .. "performance_luacode_usecustomdraw", 1, cvTags, "[性能][代码相关] TBA", 0, 1)
 
 CreateConVar(cvPrefix .. "rag_minmasslimit", 1, cvTags, "设置布娃娃特定部位的最小重量, 并降低布娃娃其它部位的重量. 对于物理部件特多的布娃娃可能会有Bug, 关掉这个会导致特定模型伸手可以飞天", 0, 1)
@@ -44,6 +54,11 @@ CreateConVar(cvPrefix .. "rag_minmasslimit", 1, cvTags, "设置布娃娃特定�
 
 CreateConVar(cvPrefix .. "npc_usehook_createentityragdoll", 0, cvTags, "在NPC被击倒时调用CreateEntityRagdoll", 0, 1)
 CreateConVar(cvPrefix .. "playdead_npc_usehook_createentityragdoll", 1, cvTags, "在NPC假死时调用CreateEntityRagdoll", 0, 1)
+CreateConVar(cvPrefix .. "playdead_npc_usehook_onnpckilled", 1, cvTags, "在NPC假死时调用OnNPCKilled", 0, 1)
+CreateConVar(cvPrefix .. "playdead_npc_allydist", 500, cvTags, "假死NPC寻找\"友军\"的距离", 0)
+CreateConVar(cvPrefix .. "playdead_npc_allyamnt", 3, cvTags, "假死NPC脱离假死需要\"友军\"的数量", 0)
+CreateConVar(cvPrefix .. "playdead_npc_deployattack_timer", 15, cvTags, "假死NPC多长时间不被注视后才脱离假死", 0)
+CreateConVar(cvPrefix .. "playdead_npc_soundemitchance", 0.1, cvTags, "假死NPC在通常情况下挨打发出受伤声音的几率", 0, 1)
 
 CreateConVar(cvPrefix .. "statcalc_npc_staminadmgmul", 1, cvTags, "[对NPC] 体力伤害乘数", 0)
 CreateConVar(cvPrefix .. "statcalc_npc_conscdmgmul", 1, cvTags, "[对NPC] 意识伤害乘数", 0)
@@ -53,7 +68,7 @@ CreateConVar(cvPrefix .. "statcalc_ply_conscdmgmul", 1, cvTags, "[对玩家] 意
 local clcv_ctrl_nodefkeybind = CreateClientConVar(cvPrefix .. "cl_control_disabledefaultkeybind", "0", true, true, "禁用默认的瞄准方法(按住E瞄准), 可能对某些服务器的自定义按键设置有帮助", 0, 1)
 local clcv_ctrl_reversedaiming = CreateClientConVar(cvPrefix .. "cl_control_reversedaiming", "0", true, true, "[仅按住E可用时] 按住E取消瞄准 而不是进行瞄准", 0, 1)
 local clcv_ctrl_altaimkey = CreateClientConVar(cvPrefix .. "cl_control_altaimkey", "0", true, true, "[仅按住E可用时] 按住[慢走键](默认是LAlt)进行瞄准", 0, 1)
-local clcv_ctrl_aim = CreateClientConVar(cvPrefix .. "cl_control_autoaim", "0", true, true, "[仅自定义按键可用时] 击倒时默认开启瞄准(0: 关闭, 1: 仅主动击倒, 2: 任何情况下被击倒(需要服务器打开相关设置!))", 0, 2)
+local clcv_ctrl_aim = CreateClientConVar(cvPrefix .. "cl_control_autoaim", "0", true, true, "[仅自定义按键可用时] 击倒时默认开启瞄准(0: 关闭, 1: 仅主动击倒, 2: 任何情况下被击倒(需要服务器打开相关设置!))", 0, 2) -- ToDo: 把2加上
 local clcv_ctrl_getup_smoothtransition = CreateClientConVar(cvPrefix .. "cl_getup_smoothtransitioninterval", "0.15", true, true, "在起身后视角在和老视角和实际视角的过渡时间, 总而言之就是能让起身的视角转换看上去丝滑一点(我相信你不会把它改成1以上的值)", 0)
 --local clcv_perf_usecalcviewmodelview = CreateClientConVar(cvPrefix .. "cl_performance_luacode_usecalcviewmodelview", "1", true, true, "[绘制][代码相关] 是否使用武器的CalcViewModelView, 可能有神秘小Bug", 0, 1)
 
@@ -685,7 +700,7 @@ funchooks.Add("Entity.GetPos", "Savee_AdvRagKnockdown_Sync", function(ent, raw, 
     local ctrl = getController(ent)
     if not IsValid(ctrl) then return __undetoured(ent, raw, ...) end
     local rag = ctrl:GetRagdoll()
-    local bone = rag:GetBonePosition(0)
+    local bone = rag:GetPos()
 
     return bone
    
@@ -700,15 +715,20 @@ funchooks.AddPost("Entity.SetPos", "Savee_AdvRagKnockdown_Sync", function(ply, i
 
     -- 神秘多人游戏bug
     if not IsValid(ctrl) then return __undetoured(ply, inputs, ...) end
-
+    ctrl.GettingUp = false
     local pos = inputs[1]
 
     local oldPos = ply:GetPos()
     for _, data in pairs(ctrl.RagPObjs) do
         local pObj = data.pObj
-        if not data.physBone or not pObj then continue end
+        if not data.physBone or not IsValid(pObj) then continue end
         local wtl = pObj:GetPos() - oldPos
+
+        local oldState = pObj:IsMotionEnabled()
+
+        pObj:EnableMotion(false)
         pObj:SetPos(pos + wtl)
+        pObj:EnableMotion(oldState)
     end
 
     return __undetoured(ply, inputs, ...)
@@ -857,45 +877,27 @@ hook.Add("EntityFireBullets", "Savee_AdvRagKnockdown_HitScanMod", function(ent, 
 
             local ctrl = getController(rag)
             --print(rag)
-            if IsValid(ctrl) then
+            if IsValid(ctrl) and IsValid(rag) and rag:IsRagdoll() then
                 local own = ctrl:GetOwner()
 
-                if IsValid(rag) and rag:IsRagdoll() then
-
-                    local tr = util.TraceHull({
-                        start = btr.HitPos,
-                        endpos = btr.HitPos,
-                        whitelist = true,
-                        filter = rag,
-                        getRaw = true,
-                        mask = MASK_ALL,
-                        mins = Vector(-2, -2, -2),
-                        maxs = Vector(2, 2, 2),
-                    })
-                    local bone = rag:TranslatePhysBoneToBone(tr.PhysicsBone)
-                    local hitGroup = rag.Savee_AdvRagKnockdown_HitGroups[bone]
-                    --print(hitGroup, HITGROUP_HEAD)
-                    --hook.Run(own:IsPlayer() and "ScalePlayerDamage" or "ScaleNPCDamage", own, hitGroup, di)
-                    --[[if not scale and own:IsNPC() then
-                        scale = GetNPCDamageMultiplier(own, hitGroup, di)
-                        --print(scale)
-                    end]]
-                    --di:ScaleDamage(di:GetDamage() * (scale or 1))
-                    --print(hitGroup)
-                    -- 神秘Bug, 我忘记重名的事了
-                    btr.HitBoxBone = bone
-                    btr.HitBox = rag.Savee_AdvRagKnockdown_HitBoxes[bone]
-                    btr.HitGroup = hitGroup --own:GetHitBoxHitGroup(rag.Savee_AdvRagKnockdown_HitBoxes[bone], 0)
-                    btr.Entity = own
-                    --print("?")
-                    --di:SetDamage(di:GetDamage() / 2)
-                    --if not bullet.IgnoreEntity then bullet.IgnoreEntity = rag end
-
-                    --ctrl.DI_MarkedAsTaken[di] = true
-
-                    --print(hitGroup)
-                end
-                --if not bullet.IgnoreEntity or bullet.IgnoreEntity == own then bullet.IgnoreEntity = ctrl:GetRagdoll() end
+                local tr = util.TraceHull({
+                    start = btr.HitPos,
+                    endpos = btr.HitPos,
+                    whitelist = true,
+                    filter = rag,
+                    getRaw = true,
+                    mask = MASK_ALL,
+                    mins = Vector(-2, -2, -2),
+                    maxs = Vector(2, 2, 2),
+                })
+                local bone = rag:TranslatePhysBoneToBone(tr.PhysicsBone)
+                local hitGroup = rag.Savee_AdvRagKnockdown_HitGroups[bone]
+  
+                -- 神秘Bug, 我忘记重名的事了
+                btr.HitBoxBone = bone
+                btr.HitBox = rag.Savee_AdvRagKnockdown_HitBoxes[bone]
+                btr.HitGroup = hitGroup --own:GetHitBoxHitGroup(rag.Savee_AdvRagKnockdown_HitBoxes[bone], 0)
+                btr.Entity = own
             end
             --di:SetDamage(114514)
             --cb(attacker, tr, di)
@@ -1131,6 +1133,11 @@ if SERVER then
         ctrl.NextRegenConsciousness = math.max(ct, ctrl.NextRegenConsciousness) + math.Clamp(dmg / 10, 0.1, 2) * forceMul / 2
 
     end]]
+
+    local function canPlayDead(ply)
+
+    end
+
     local function doKnockdown(ply, vec, bone)
 
         if not cv_kd_enabled:GetBool() then return end
@@ -1453,6 +1460,18 @@ if SERVER then
 
     end
 
+    function Savee_AdvRagKnockdown_ReplaceRagConstraints(rag, pObjs)
+        local angMax = Angle(75, 80, 80)
+        Savee_AdvRagKnockdown_ReplaceRagConstraint(rag, pObjs, "ValveBiped.Bip01_L_Hand", "ValveBiped.Bip01_L_Forearm", -angMax, angMax, 0)
+        Savee_AdvRagKnockdown_ReplaceRagConstraint(rag, pObjs, "ValveBiped.Bip01_R_Hand", "ValveBiped.Bip01_R_Forearm", -angMax, angMax, 0)
+    
+        Savee_AdvRagKnockdown_ReplaceRagConstraint(rag, pObjs, "ValveBiped.Bip01_Head1", "ValveBiped.Bip01_Spine2", -Angle(15, 40, 50), Angle(15, 80, 50), 0)
+
+        Savee_AdvRagKnockdown_ReplaceRagConstraint(rag, pObjs, "ValveBiped.Bip01_L_UpperArm", "ValveBiped.Bip01_Spine2", -angMax, angMax, 0)
+        Savee_AdvRagKnockdown_ReplaceRagConstraint(rag, pObjs, "ValveBiped.Bip01_R_UpperArm", "ValveBiped.Bip01_Spine2", -angMax, angMax, 0)
+
+    end
+
     ---@diagnostic disable-next-line: gmod-net-read-write-order-mismatch
     net.Receive("Savee_AdvRagKnockdown_OperationMsg", function(len, p)
 
@@ -1638,8 +1657,8 @@ if SERVER then
     funchooks.Add("NPC.Disposition", "Savee_AdvRagKnockdown_Sync", function(ply, ent, raw, ...)
 
         local ctrl = getController(ent)
-        if raw or not IsValid(ctrl) or not ent:IsRagdoll() then return __undetoured(ply, ent, raw, ...) end
-        local own = ctrl:GetOwner()
+        if raw or not IsValid(ctrl) or not ent:IsRagdoll() or ply == ent then return __undetoured(ply, ent, raw, ...) end
+        local own = ctrl:GetOwner(true)
 
         return ply:Disposition(own)
     
@@ -1669,20 +1688,25 @@ if SERVER then
         
         return false
     end)
+
+    hook.Add("EntityEmitSound", "Savee_AdvRagKnockdown_Unconsciousness", function(data)
+        local ent = data.Entity
+        local ctrl = getController(ent)
+        if not IsValid(ctrl) then return end
+
+        if ctrl.NPCState_Unconsciousness then return false end
+    end)
     
     hook.Add("PostCleanupMap", "Savee_AdvRagKnockdown_ResetRagdoll", function()
     
-        for _, ent in pairs(SAVEE_ADVRAGKNOCKDOWN_CONTROLLERS) do
+        for ent, _ in pairs(SAVEE_ADVRAGKNOCKDOWN_CONTROLLERS) do
             if not IsValid(ent) or ent:IsMarkedForDeletion() then removeFromCtrlList(ent) continue end
             
             local own = ent:GetOwner()
             local rag = ent:GetRagdoll()
             if not IsValid(rag) or not IsValid(own) or not own:IsPlayer() or not own:Alive() then ent:RemoveSelf() continue end
 
-            local angMax = Angle(65, 80, 80)
-            Savee_AdvRagKnockdown_ReplaceRagConstraint(rag, ent.RagPObjs, "ValveBiped.Bip01_L_Hand", "ValveBiped.Bip01_L_Forearm", -angMax, angMax, 0)
-            Savee_AdvRagKnockdown_ReplaceRagConstraint(rag, ent.RagPObjs, "ValveBiped.Bip01_R_Hand", "ValveBiped.Bip01_R_Forearm", -angMax, angMax, 0)
-            
+            Savee_AdvRagKnockdown_ReplaceRagConstraints(rag, ent.RagPObjs)
         end
     
     end)
@@ -1738,13 +1762,12 @@ if SERVER then
         ctrl:RemoveSelf()
 
     end)
+
     hook.Add("CanPlayerEnterVehicle", "Savee_AdvRagKnockdown_NoVehicle", function(ply)
         --print(dRag)
         ---@type Entity
         local ctrl = getController(ply)
         if IsValid(ctrl) then return false end
-        
-
     end)
 
     hook.Add("SetupPlayerVisibility", "Savee_AdvRagKnockdown_PVS", function(ply, ve)
@@ -1833,7 +1856,7 @@ if SERVER then
             end
             
             local ht = wep:GetHoldType()
-            if cmd:KeyDown(IN_ATTACK) and meleeHTs[ht] or wep:Clip1() == 0 and blackListedHTs[ht] then
+            if cmd:KeyDown(IN_ATTACK) and (meleeHTs[ht] or (wep:Clip1() == 0 and blackListedHTs[ht])) then
                 ctrl:AddKeyInput(IN_ATTACK)
                 cmd:RemoveKey(IN_ATTACK)
             end
@@ -2027,9 +2050,11 @@ else
             end
             
             local ht = wep:GetHoldType()
-            if cmd:KeyDown(IN_ATTACK) and meleeHTs[ht] or wep:Clip1() == 0 and blackListedHTs[ht] then
+            if cmd:KeyDown(IN_ATTACK) then
                 ctrl:AddKeyInput(IN_ATTACK)
-                cmd:RemoveKey(IN_ATTACK)
+                if (wep:Clip1() == 0 and blackListedHTs[ht]) then
+                    cmd:RemoveKey(IN_ATTACK)
+                end
             end
         elseif ctrl:GetLArmDelta() > 0.3 and cmd:KeyDown(IN_RELOAD) then
             cmd:RemoveKey(IN_RELOAD)
@@ -2071,6 +2096,16 @@ else
 
     end)
 
+    local function doWeaponCalcView(wep, vm, pos, ang)
+        if wep.CalcViewModelView then 
+            pos, ang = wep:CalcViewModelView(vm, pos, ang, pos, ang)
+        elseif wep.GetViewModelPosition then 
+            pos, ang = wep:GetViewModelPosition(pos, ang) 
+        end
+        return pos, ang
+    end
+
+
     hook.Add("CalcViewModelView", "Savee_AdvRagKnockdown_CTRLHook", function(wep, vm, oldPos, oldAng, pos, ang, ...)
         local self = getController(LocalPlayer():GetViewEntity())
         if returnCheck(self) then
@@ -2083,11 +2118,7 @@ else
             pos = LerpVector(lerp, calcview_last_pos, pos)
 
             if IsValid(wep) then
-                if wep.CalcViewModelView then 
-                    pos, ang = wep:CalcViewModelView(vm, pos, ang, pos, ang)
-                elseif wep.GetViewModelPosition then 
-                    pos, ang = wep:GetViewModelPosition(pos, ang) 
-                end
+                pos, ang = doWeaponCalcView(wep, vm, pos, ang)
             end
             
             return pos, ang
