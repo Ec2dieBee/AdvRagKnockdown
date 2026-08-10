@@ -1290,6 +1290,13 @@ function ENT:ShouldGetUp()
     return true
 end
 
+function ENT:CancelGetUp()
+    local own = self:GetOwner()
+    self.GettingUp = false
+    
+    if own:IsNPC() then self:SetCachedVar("NPC_CanGetUpVar", false, math.Rand(1, 3)) end
+end
+
 function ENT:RestorePlayerData()
 
     local own = self:GetOwner()
@@ -1743,7 +1750,7 @@ function ENT:Think()
 
     -- 起身
     if self.GettingUp and not self:ShouldGetUp() then
-        self.GettingUp = false
+        self:CancelGetUp()
     elseif self.GettingUp then
 
         local in_duck = self.GettingUp_Crouch
@@ -1935,7 +1942,7 @@ local torsoang, torsoangdamp, torsospd, torsospddamp, torsodampfactor, torsodelt
 --local torsomovespd, torsomovespddamp, torsomovespddelta = 450, 450, 0.2
 local headang, headangdamp, headspd, headspddamp, headdampfactor, headdelta = 30, 50, 0, 0, 1, 0.1
 local handang, handangdamp, handspd, handspddamp, handdampfactor, handdelta = 350, 250, 150, 0, 0.8, 0.1
-local handaimang, handaimangdamp, handaimspd, handaimspddamp, handaimdampfactor, handaimdelta = 450, 350, 0, 0, 0.8, 0.1
+local handaimang, handaimangdamp, handaimspd, handaimspddamp, handaimdampfactor, handaimdelta = 450, 350, 7, 0, 0.8, 0.1
 local armaimang, armaimangdamp, armaimspd, armaimspddamp, armaimdampfactor, armaimdelta = 200, 200, 0, 0, 0.8, 0.1
 local pelvisang, pelvisangdamp, pelvisspd, pelvisspddamp, pelvisdampfactor, pelvisdelta = 0, 10, 0, 0, 0.8, 0.15
 local legang, legangdamp, legspd, legspddamp, legsdampfactor, legsdelta = 25, 15, 0, 0, 0.5, 0.2
@@ -2359,7 +2366,7 @@ function ENT:DealWithAnims(isPly, aimingWeapon, noArm, wepHT, isMeleeHT)
                 --secondstoarrive = tickInterval / 10,
                 pos = lhToLocalPos,
                 angle = lhToLocalAng,
-                maxspeed = handaimspd,
+                maxspeed = isPly and handaimspd or 10,
                 maxspeeddamp = handaimspddamp,
                 maxangular = handaimang,
                 maxangulardamp = handaimangdamp,
@@ -2371,7 +2378,7 @@ function ENT:DealWithAnims(isPly, aimingWeapon, noArm, wepHT, isMeleeHT)
                 --secondstoarrive = tickInterval / 10,
                 pos = rhToLocalPos,
                 angle = Angle(5, 0, 180),
-                maxspeed = handaimspd,
+                maxspeed = isPly and handaimspd or 10,
                 maxspeeddamp = handaimspddamp,
                 maxangular = handaimang,
                 maxangulardamp = handaimangdamp,
@@ -2464,7 +2471,7 @@ function ENT:DealWithAnims(isPly, aimingWeapon, noArm, wepHT, isMeleeHT)
                 --secondstoarrive = 0.01,
                 pos = targetPos,
                 angle = ang,
-                maxspeed = handspd,
+                maxspeed = handspd * (isPly and 1 or 0.5),
                 maxspeeddamp = handspddamp,
                 maxangular = handang,
                 maxangulardamp = handangdamp,
@@ -2481,15 +2488,16 @@ function ENT:DealWithAnims(isPly, aimingWeapon, noArm, wepHT, isMeleeHT)
         self:SetLArmDelta(1)
         self:SetRArmDelta(1)
 
-        local lhand = not noArm and in_forward or self:HasKeyInput(IN_ATTACK)
+        local lhand = (not isPly or not noArm) and in_forward or self:HasKeyInput(IN_ATTACK)
         local rhand = self:HasKeyInput(IN_ATTACK2) or (not isPly and in_forward)
 
         local forward, right = aea:Forward() * 30 * mdlScale, aea:Right() * 5 * mdlScale
         local pos = eyepos + forward
 
         if not isPly then
-            pos = pos - Vector(0, 0, 50)
+            pos = pos - Vector(0, 0, 35)
         end
+
         if lhand then
 
 
@@ -2524,7 +2532,7 @@ function ENT:DealWithAnims(isPly, aimingWeapon, noArm, wepHT, isMeleeHT)
                 --secondstoarrive = 0.01,
                 pos = pos - right,
                 angle = ang,
-                maxspeed = handspd,
+                maxspeed = handspd * (isPly and 1 or 0.5),
                 maxspeeddamp = handspddamp,
                 maxangular = handang,
                 maxangulardamp = handangdamp,
@@ -2564,7 +2572,7 @@ function ENT:DealWithAnims(isPly, aimingWeapon, noArm, wepHT, isMeleeHT)
                 --secondstoarrive = 0.01,
                 pos = pos + right,
                 angle = ang,
-                maxspeed = handspd,
+                maxspeed = handspd * (isPly and 1 or 0.5),
                 maxspeeddamp = handspddamp,
                 maxangular = handang,
                 maxangulardamp = handangdamp,
@@ -2745,14 +2753,14 @@ function ENT:Tick()
                 --secondstoarrive = 0.01,
                 pos = pos,
                 angle = ang,
-                maxspeed = 30 * getupForceMul,
-                maxspeeddamp = 30 * getupForceMul * (self.GettingUp_SyncingToOwner and 3 or 1),
+                maxspeed = 10 * getupForceMul,
+                maxspeeddamp = 0.2 * getupForceMul * (self.GettingUp_SyncingToOwner and 3 or 1),
                 maxangular = 350,
                 maxangulardamp = 1350,
                 dampfactor = Lerp((self.GetupAnimModel:GetCycle() - 0.3) / 0.7, 0.2, 0.5),
                 delta = self.GettingUp_SyncingToOwner and 0.1 or 0.2,
                 DontFuckMe = true,
-                --addMass = getupUseMass,
+                addMass = true,
             }
 
         end

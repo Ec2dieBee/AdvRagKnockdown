@@ -39,6 +39,8 @@ local cv_kd_knockdown_percentdamage_enabled = CreateConVar(cvPrefix .. "knockdow
 local cv_kd_knockdown_percentdamage = CreateConVar(cvPrefix .. "knockdown_percentdamage", 0.5, cvTags, "击倒玩家所需的伤害百分比, 请注意 如果其它条件满足也是可以击倒的", 0, 1)
 local cv_kd_knockdown_mindamage = CreateConVar(cvPrefix .. "knockdown_mindamage", 10, cvTags, "击倒玩家最小所需的伤害, 请注意 如果力度足够也是可以击倒的", 0)
 local cv_kd_knockdown_mindamageforce = CreateConVar(cvPrefix .. "knockdown_mindamageforce", 2500, cvTags, "击倒玩家最小所需的伤害力度, 请注意 如果伤害足够也是可以击倒的", 0)
+local cv_kd_knockdown_physgun = CreateConVar(cvPrefix .. "knockdown_physicsgun", 0, cvTags, "允许使用物理枪捡起可击倒实体", 0, 1)
+local cv_kd_knockdown_gravgun = CreateConVar(cvPrefix .. "knockdown_gravitygun", 0, cvTags, "允许使用重力枪推倒实体", 0, 1)
 
 local cv_kd_damagecalc_usetakedamage = CreateConVar(cvPrefix .. "knockdown_usetakedamage", 0, cvTags, "使用TakeDamageInfo并更进一步修改BulletTable, 可能会出现没受到伤害且力度不够时仍被击倒的情况", 0, 1)
 
@@ -48,6 +50,7 @@ local cv_kd_ctrl_luacode_uselocaleyeangles = CreateConVar(cvPrefix .. "control_l
 local cv_kd_perf_luacode_nexttick = CreateConVar(cvPrefix .. "performance_luacode_nexttick", 0.01, cvTags, "[性能][代码相关] 下次统一运行控制器Tick()的时间, 这个值越大布娃娃效果越拉跨(但性能会好点我猜), 不建议大于0.03", 0)
 local cv_kd_perf_luacode_tracelevel = CreateConVar(cvPrefix .. "performance_luacode_tracelevel", 4, cvTags, "[性能][代码相关] 查找Trace的层数, 越高越\"广泛\", 操作涉及到布娃娃的面越广, 但有潜在的性能消耗(低于4的话工具枪无法选择布娃娃)", 0)
 --local cv_kd_perf_luacode_usecustomdraw = CreateConVar(cvPrefix .. "performance_luacode_usecustomdraw", 1, cvTags, "[性能][代码相关] TBA", 0, 1)
+--local cv_kd_agressivecompability = CreateConVar(cvPrefix .. "agressivecompability", 0, cvTags, "通过覆盖其它钩子", 0)
 
 CreateConVar(cvPrefix .. "rag_minmasslimit", 1, cvTags, "设置布娃娃特定部位的最小重量, 并降低布娃娃其它部位的重量. 对于物理部件特多的布娃娃可能会有Bug, 关掉这个会导致特定模型伸手可以飞天", 0, 1)
 
@@ -715,7 +718,7 @@ funchooks.AddPost("Entity.SetPos", "Savee_AdvRagKnockdown_Sync", function(ply, i
 
     -- 神秘多人游戏bug
     if not IsValid(ctrl) then return __undetoured(ply, inputs, ...) end
-    ctrl.GettingUp = false
+    ctrl:CancelGetUp()
     local pos = inputs[1]
 
     local oldPos = ply:GetPos()
@@ -1147,7 +1150,7 @@ if SERVER then
 
         local oldCtrl = getController(ply)
         if IsValid(oldCtrl) then
-            oldCtrl.GettingUp = false
+            oldCtrl:CancelGetUp()
             --[[for _, data in pairs(oldCtrl.RagPObjs) do
                 if not data.physBone then continue end
                 local pObj = data.pObj
@@ -1339,7 +1342,7 @@ if SERVER then
 
         local ctrl = getController(ent)
         if IsValid(ctrl) then
-            ctrl.GettingUp = false
+            ctrl:CancelGetUp()
             return
         end
     
@@ -1378,6 +1381,8 @@ if SERVER then
         if not IsValid(rag) or not bchild or not bparent then return end
         if not rag:LookupBone(bparent) or not rag:LookupBone(bchild) then return end
 
+        if pObjs and (not pObjs[bparent].physBone or not pObjs[bchild].physBone) then return end
+
         --local _
         minAng = minAng or Angle()
         maxAng = maxAng or Angle()
@@ -1387,8 +1392,8 @@ if SERVER then
         -- 每个正常模型都有的玩意, 没有就让它滚
         local lArm = pObjs and pObjs[bparent].id or rag:TranslateBoneToPhysBone(rag:LookupBone(bparent))
         local lHand = pObjs and pObjs[bchild].id or rag:TranslateBoneToPhysBone(rag:LookupBone(bchild))
-        local lArmP = pObjs and pObjs[bparent].pObj or rag:GetPhysicsObjectNum(rag:TranslateBoneToPhysBone(rag:LookupBone(bparent)))
-        local lHandP = pObjs and pObjs[bchild].pObj or rag:GetPhysicsObjectNum(rag:TranslateBoneToPhysBone(rag:LookupBone(bchild)))
+        local lArmP = pObjs and pObjs[bparent].pObj or rag:GetPhysicsObjectNum(lArm)
+        local lHandP = pObjs and pObjs[bchild].pObj or rag:GetPhysicsObjectNum(lHand)
         --print(rag:GetBoneName(rag:LookupBone(bparent)), rag:GetBoneName(rag:LookupBone(bchild)), rag:GetBoneName(rag:TranslatePhysBoneToBone(lArm)))
         local oldHandPos, oldHandAng, oldArmPos, oldArmAng = lHandP:GetPos(), lHandP:GetAngles(), lArmP:GetPos(), lArmP:GetAngles()
         --local oldHandAng = lHandP:GetAngles()
@@ -1465,7 +1470,7 @@ if SERVER then
         Savee_AdvRagKnockdown_ReplaceRagConstraint(rag, pObjs, "ValveBiped.Bip01_L_Hand", "ValveBiped.Bip01_L_Forearm", -angMax, angMax, 0)
         Savee_AdvRagKnockdown_ReplaceRagConstraint(rag, pObjs, "ValveBiped.Bip01_R_Hand", "ValveBiped.Bip01_R_Forearm", -angMax, angMax, 0)
     
-        Savee_AdvRagKnockdown_ReplaceRagConstraint(rag, pObjs, "ValveBiped.Bip01_Head1", "ValveBiped.Bip01_Spine2", -Angle(15, 40, 50), Angle(15, 80, 50), 0)
+        Savee_AdvRagKnockdown_ReplaceRagConstraint(rag, pObjs, "ValveBiped.Bip01_Head1", "ValveBiped.Bip01_Spine2", -Angle(15, 60, 50), Angle(15, 40, 50), 0)
 
         Savee_AdvRagKnockdown_ReplaceRagConstraint(rag, pObjs, "ValveBiped.Bip01_L_UpperArm", "ValveBiped.Bip01_Spine2", -angMax, angMax, 0)
         Savee_AdvRagKnockdown_ReplaceRagConstraint(rag, pObjs, "ValveBiped.Bip01_R_UpperArm", "ValveBiped.Bip01_Spine2", -angMax, angMax, 0)
@@ -1480,7 +1485,7 @@ if SERVER then
         ---@type Entity
         local ctrl = p.Savee_AdvRagKnockdown_Controller
         if type == 0 then
-            if IsValid(ctrl) then ctrl.GettingUp = false return end
+            if IsValid(ctrl) then ctrl:CancelGetUp() return end
             doKnockdown(p)
             -- 击倒我
         elseif IsValid(ctrl) then
@@ -1717,6 +1722,21 @@ if SERVER then
 
         npc:SetPos(ctrl:GetRagdoll():GetPos(), true)
 
+    end)
+
+    hook.Add("PhysgunPickup", "Savee_AdvRagKnockdown_TransStuffIntoRag", function(ply, ent, fucked)
+        if fucked or not cv_kd_knockdown_physgun:GetBool() or ply == ent or not entTypeCheck(ent) then return end
+        if not hook.Run("PhysgunPickup", ply, ent, true) then return false end
+        
+        doKnockdown(ent)
+        return false
+    end)
+    hook.Add("GravGunPunt", "Savee_AdvRagKnockdown_TransStuffIntoRag", function(ply, ent, fucked)
+        if fucked or not cv_kd_knockdown_gravgun:GetBool() or ply == ent or not entTypeCheck(ent) then return end
+        if hook.Run("GravGunPunt", ply, ent, true) == false then return false end
+        
+        doKnockdown(ent)
+        return true
     end)
 
     hook.Add("CreateEntityRagdoll", "Savee_AdvRagKnockdown_InheritRagVel", function(ent, dRag, fucked)
