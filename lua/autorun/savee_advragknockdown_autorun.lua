@@ -1293,6 +1293,10 @@ if SERVER then
         ctrl.DI_GoingToTake[#ctrl.DI_GoingToTake + 1] = tbl
         ctrl.DI_MarkedAsTaken[di] = true]]
     
+        if atk:IsNPC() or atk:IsPlayer() or atk:IsNextBot() or atk:GetClass() == "func_breakable_surf" then
+            di:SetDamage(math.floor(dmg / 10))
+        end
+
         ctrl:DoBrainDamages(di)
         ctrl.DI_MarkedAsTaken[di] = true
         own:TakeDamageInfo(di, true)
@@ -1382,6 +1386,7 @@ if SERVER then
         if not rag:LookupBone(bparent) or not rag:LookupBone(bchild) then return end
 
         if pObjs and (not pObjs[bparent].physBone or not pObjs[bchild].physBone) then return end
+        --print(bparent)
 
         --local _
         minAng = minAng or Angle()
@@ -1437,8 +1442,8 @@ if SERVER then
         --local const = constraint.AdvBallsocket(rag, rag, lArm, lHand, wtlLH, nil, 0, 0, minAng.p, minAng.y, minAng.r, maxAng.p, maxAng.y, maxAng.r, fric, fric, fric, 0, 1)
         --local _, correctedAng = LocalToWorld(vector_origin, Angle(0, 0, -90), vector_origin, lArmP:GetAngles())
         --lHandP:SetAngles(correctedAng)
-        rag:RemoveInternalConstraint(lHand)
         constraint.AdvBallsocket(rag, rag, lArm, lHand, wtlLH, nil, 0, 0, minAng.p, minAng.y, minAng.r, maxAng.p, maxAng.y, maxAng.r, fric, fric, fric, 0, 1)
+        rag:RemoveInternalConstraint(lHand)
 
         lArmP:SetPos(oldArmPos)
         lArmP:SetAngles(oldArmAng)

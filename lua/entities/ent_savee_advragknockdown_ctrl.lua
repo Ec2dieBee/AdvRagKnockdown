@@ -29,7 +29,7 @@ local vector_origin = Vector()
 local _
 local tickInterval = engine.TickInterval()
 
-local CUSTOM_OWNER_COLLISIONGROUP = COLLISION_GROUP_DEBRIS_TRIGGER
+local CUSTOM_OWNER_COLLISIONGROUP = COLLISION_GROUP_IN_VEHICLE
 
 local noArmVal = 55
 
@@ -633,7 +633,7 @@ local anims = {
         {
             Model = "models/Zombie/Classic.mdl",
             Sequence = "slumprise_b",
-            AngDelta = Angle(0, 180, 0),
+            AngDelta = Angle(0, 0, 0),
 
             -- PhysControl Parameter
             -- {startCycle, EndCycle}
@@ -648,9 +648,9 @@ local anims = {
         {
             Model = "models/Zombie/Classic.mdl",
             Sequence = "slumprise_a",
-            AngDelta = Angle(0, 0, 0),
+            AngDelta = Angle(0, -90, 0),
 
-            StartCycle = 0.3,
+            StartCycle = 0.2,
             -- PhysControl Parameter
             -- {startCycle, EndCycle}
             Recover = {0.7, 0.8},
@@ -662,9 +662,52 @@ local anims = {
     },
 }
 
-timer.Simple(tickInterval, function()
-    hook.Run("Savee_AdvRagKnockdown_GetUpAnimationInit", anims.Getup)
-end)
+local function hasAnim(anim, seq)
+    return anim:LookupSequence(seq) ~= -1
+end
+
+if SERVER then
+    timer.Simple(tickInterval, function()
+
+
+        local anim = ents.Create("base_anim")
+        anim:Spawn()
+
+        anim:SetModel("models/player/breen.mdl")
+        if hasAnim(anim, "proneup_stand") then
+            anims.Getup[#anims.Getup + 1] = {
+                Model = "models/player/breen.mdl",
+                Sequence = "proneup_stand",
+                AngDelta = Angle(0, 0, 0),
+
+                StartCycle = 0.1,
+                Recover = {0.9, 1},
+                Recover_Duck = {0.8, 0.9},
+                Pitch = {-90, 90},
+                GetUp_Stand = 0.8,
+                GetUp_Duck = 0.5,
+            }
+        end
+        if hasAnim(anim, "wos_l4d_getup_from_pounced") then
+            anims.Getup[#anims.Getup + 1] = {
+                Model = "models/player/breen.mdl",
+                Sequence = "wos_l4d_getup_from_pounced",
+                AngDelta = Angle(0, 0, 0),
+
+                StartCycle = 0.1,
+                Recover = {0.9, 1},
+                Recover_Duck = {0.8, 0.9},
+                Pitch = {-90, 90, true},
+                GetUp_Stand = 0.8,
+                GetUp_Duck = 0.5,
+            }
+        end
+
+        anim:Remove()
+
+        hook.Run("Savee_AdvRagKnockdown_GetUpAnimationInit", anims.Getup)
+    end)
+end
 
 ENT.AnimationTable = anims
 
@@ -758,9 +801,11 @@ function ENT:GetCachedVar(key, var)
     if last > ct then return self.Caches[key] end
     return var == nil and self.Caches[key] or var
 end
-function ENT:SetCachedVar(key, var, time)
+function ENT:SetCachedVar(key, var, time, forced)
     local ct, last = CurTime(), self.CacheTimers[key] or -1
-    if last > ct then return end
+
+    if not forced and last > ct then return end
+
     self.Caches[key] = var
     self.CacheTimers[key] = ct + time
 end
@@ -860,9 +905,11 @@ function ENT:Initialize()
     cloneAtoB(own, rag)
     --rag:RemoveFlags(FL_OBJECT)
 
+    rag:SetParent(own)
+    rag:AddEffects(EF_BONEMERGE)
+
     rag:Spawn()
     rag.Savee_AdvRagKnockdown_Controller = self
-
 
     if own:IsNPC() and getCV("npc_usehook_createentityragdoll", "Bool") then
         local hooks = hook.GetTable().CreateEntityRagdoll
@@ -870,8 +917,9 @@ function ENT:Initialize()
             hooks[id](own, rag, true)
         end
     end
-    --rag:SetParent(nil)
-    --rag:RemoveEffects(EF_BONEMERGE)
+
+    rag:SetParent(nil)
+    rag:RemoveEffects(EF_BONEMERGE)
 
     rag:AddEFlags(EFL_DONTBLOCKLOS)
     rag:SetCollisionGroup(own:IsPlayer() and COLLISION_GROUP_PLAYER or COLLISION_GROUP_NPC_ACTOR)
@@ -906,16 +954,18 @@ function ENT:Initialize()
     -- 部分模型的TranslateBoneToPhysBone结果不正确
 
     local pObjs = {}
+    local mtx = Matrix()
 
     for pID = 0, rag:GetPhysicsObjectCount() - 1 do
         local pObj = rag:GetPhysicsObjectNum(pID)
         local i = rag:TranslatePhysBoneToBone(pID)
 
-        local pos, ang = own:GetBonePosition(i)
+        --own:CopyBoneMatrix(i, mtx)
+        --local pos, ang = mtx:GetTranslation(), mtx:GetAngles()
 
-        pObj:SetPos(pos)
-        pObj:SetAngles(ang)
-
+        --pObj:SetPos(pos)
+        --pObj:SetAngles(ang)
+        
         local name = rag:GetBoneName(i)
         --pIDToName[pID] = name
         --print(i, name, pID, pObj)
@@ -970,7 +1020,7 @@ function ENT:Initialize()
         if not IsValid(self) or not IsValid(own) then return end
 
         local ct = CurTime()
-        --if ct + data.DeltaTime <= self.PreventPhysAttackTill then return end
+        if self.GettingUp and ct + data.DeltaTime <= self.PreventPhysAttackTill then return end
 
         -- 我不认为你高速创到一个灰尘会导致你昏厥, 我觉得该昏的是灰尘
         local pObj = data.PhysObject
@@ -1004,8 +1054,8 @@ function ENT:Initialize()
 
         local ent = data.HitEntity
 
-        local dmg = (spd / 10 - pObj:GetMass()) * math.min(data.DeltaTime, 1)
-        if ent:GetClass() == "func_breakable_surf" then 
+        local dmg = (spd / 10 - pObj:GetMass()) * math.min(data.DeltaTime, 1) / 1.5
+        if ent:IsNPC() or ent:IsRagdoll() or ent:GetClass() == "func_breakable_surf" then 
             dmg = dmg / 10
         end
 
@@ -1022,7 +1072,7 @@ function ENT:Initialize()
 
         --print(data.HitEntity)
         own:TakeDamageInfo(di, true)
-        --self.PreventPhysAttackTill = ct + tickInterval * 2
+        self.PreventPhysAttackTill = ct + tickInterval * 2
     
     end)
 
@@ -1063,12 +1113,12 @@ function ENT:Initialize()
 
     self.m_iOwnMoveType = own:GetMoveType()
     self.m_iOwnCollisionGroup = own:GetCollisionGroup()
-    self.m_iOwnSolid = own:GetSolid()
+    --self.m_iOwnSolid = own:GetSolid()
     --self.m_entOwnLightOrigin = own:GetLightingOriginEntity()
 
     own:SetMoveType(MOVETYPE_NONE)
     own:SetCollisionGroup(CUSTOM_OWNER_COLLISIONGROUP)
-    own:SetSolid(SOLID_NONE)
+    --own:SetSolid(SOLID_NONE)
     --own:SetLightingOriginEntity(rag)
 
     own:AddEffects(EF_BONEMERGE)
@@ -1205,9 +1255,9 @@ function ENT:TryGetUp(animTbl, forced)
     local mdlScale = rag.Savee_AdvRagKnockdown_ModelScale
 
     local pos = rag:GetBonePosition(0)
-    local pos2 = rag:GetBonePosition(rag:LookupBone("ValveBiped.Bip01_Spine2") or 0)
+    local pos2 = rag:GetBonePosition(rag:LookupBone("ValveBiped.Bip01_Spine2") or 1)
 
-    local ang = (pos - pos2):Angle()
+    local ang = (pos2 - pos):Angle()
     ang:Normalize()
 
     -- TODO: 射线检测
@@ -1292,9 +1342,12 @@ end
 
 function ENT:CancelGetUp()
     local own = self:GetOwner()
+    local rag = self:GetRagdoll()
+
     self.GettingUp = false
+    self.GetupAnimModel:SetParent(rag)
     
-    if own:IsNPC() then self:SetCachedVar("NPC_CanGetUpVar", false, math.Rand(1, 3)) end
+    if own:IsNPC() then self:SetCachedVar("NPC_CanGetUpVar", false, math.Rand(1, 3), true) end
 end
 
 function ENT:RestorePlayerData()
@@ -1312,7 +1365,7 @@ function ENT:RestorePlayerData()
     
     own:SetMoveType(self.m_iOwnMoveType or MOVETYPE_STEP)
     own:SetCollisionGroup(self.m_iOwnCollisionGroup or COLLISION_GROUP_PLAYER)
-    own:SetSolid(self.m_iOwnSolid or SOLID_OBB)
+    --own:SetSolid(self.m_iOwnSolid or SOLID_OBB)
     own:SetLightingOriginEntity(self.m_entOwnLightOrigin or NULL)
 
 end
@@ -1817,7 +1870,7 @@ function ENT:Think()
 
             if stuckTest.Hit then 
                 pos = handleStuck(own, pos, mins, maxs)
-                if not pos then Savee_AdvRagKnockdown_DoKnockdown(own) return end
+                if not pos then self:CancelGetUp() return end
             end
 
             self.GettingUp_OwnerPos = pos
@@ -1839,6 +1892,9 @@ function ENT:Think()
             local rawACT = in_duck and ACT_MP_CROUCH_IDLE or ACT_MP_STAND_IDLE
             -- weapon_base/sh_anims.lua
             if in_duck then selectedACT = selectedACT + 3 end
+
+            local dist = rag:GetPos():Distance(anim:GetBonePosition(0))
+            if dist > 32 then self:CancelGetUp() return end
 
             self:SetParent(nil)
             self:SetPos(tr.HitPos + Vector(0, 0, 0.2))
@@ -1874,10 +1930,10 @@ function ENT:Think()
         self.m_iOwnCollisionGroup = own:GetCollisionGroup()
         own:SetCollisionGroup(CUSTOM_OWNER_COLLISIONGROUP)
     end
-    if own:GetSolid() ~= SOLID_NONE then
+    --[[if own:GetSolid() ~= SOLID_NONE then
         self.m_iOwnSolid = own:GetSolid()
         own:SetSolid(SOLID_NONE)
-    end
+    end]]
     if own:GetLightingOriginEntity() ~= rag then
         self.m_entOwnLightOrigin = own:GetLightingOriginEntity()
         own:SetLightingOriginEntity(rag)
@@ -1945,7 +2001,7 @@ local handang, handangdamp, handspd, handspddamp, handdampfactor, handdelta = 35
 local handaimang, handaimangdamp, handaimspd, handaimspddamp, handaimdampfactor, handaimdelta = 450, 350, 7, 0, 0.8, 0.1
 local armaimang, armaimangdamp, armaimspd, armaimspddamp, armaimdampfactor, armaimdelta = 200, 200, 0, 0, 0.8, 0.1
 local pelvisang, pelvisangdamp, pelvisspd, pelvisspddamp, pelvisdampfactor, pelvisdelta = 0, 10, 0, 0, 0.8, 0.15
-local legang, legangdamp, legspd, legspddamp, legsdampfactor, legsdelta = 25, 15, 0, 0, 0.5, 0.2
+local legang, legangdamp, legspd, legspddamp, legsdampfactor, legsdelta = 15, 5, 0, 0, 0.5, 0.2
 
 -- 为了避免强奸你的性能 我们制作了一个Tick 用以执行那些*不得不*每Tick执行的操作
 -- 快感谢Tick吧
@@ -2719,18 +2775,26 @@ function ENT:Tick()
 
         local lfoot, rfoot = pObjs["ValveBiped.Bip01_L_Foot"] and pObjs["ValveBiped.Bip01_L_Foot"].pObj, pObjs["ValveBiped.Bip01_R_Foot"] and pObjs["ValveBiped.Bip01_R_Foot"].pObj
 
-        local lFootOnGround = lfoot and util.TraceLine({start = lfoot:GetPos(), endpos = lfoot:GetPos() - Vector(0, 0, 10), filter = {own, rag}})
+        local lFootOnGround = lfoot and util.TraceLine({start = lfoot:GetPos(), endpos = lfoot:GetPos() - Vector(0, 0, 10 * mdlScale), filter = {own, rag}})
         lFootOnGround = lfoot and (lFootOnGround.Hit or lFootOnGround.HitWorld)
-        local rFootOnGround = rfoot and util.TraceLine({start = rfoot:GetPos(), endpos = rfoot:GetPos() - Vector(0, 0, 10), filter = {own, rag}})
+        local rFootOnGround = rfoot and util.TraceLine({start = rfoot:GetPos(), endpos = rfoot:GetPos() - Vector(0, 0, 10 * mdlScale), filter = {own, rag}})
         rFootOnGround = rfoot and (rFootOnGround.Hit or rFootOnGround.HitWorld)
 
         --print(lFootOnGround)
+        local absVel = util.QuickTrace(self.GetupAnimModel:GetPos(), Vector(0, 0, -10 * mdlScale), rag)
+        absVel = (IsValid(absVel.Entity) and absVel.Entity:GetVelocity() or vector_origin) - rag:GetVelocity()
 
-        local getupForceMul = 1
+        local absVelLen = absVel:Length()
+
+        local getupForceMul = 0.1
         if lFootOnGround then getupForceMul = getupForceMul + 0.65 end
         if rFootOnGround then getupForceMul = getupForceMul + 0.65 end
 
-        local target = self.GettingUp_SyncingToOwner and self or self.GetupAnimModel
+        getupForceMul = getupForceMul * Lerp((absVelLen - 200) / 100, 1, 0)
+
+        
+        local anim = self.GetupAnimModel
+        local target = self.GettingUp_SyncingToOwner and self or anim
         --print(target)
         for i = 0, target:GetBoneCount() - 1 do
             local bName = target:GetBoneName(i)
@@ -2748,22 +2812,36 @@ function ENT:Tick()
             elseif not self.GettingUp_SyncingToOwner and pObjs[bName].MotionDisabledByGetUp then
                 pObj:EnableMotion(true)
             end]]
+            local transition = Lerp(anim:GetCycle() / 0.2, 0.5, 1)
 
             shadowCtrls[bName] = {
                 --secondstoarrive = 0.01,
                 pos = pos,
                 angle = ang,
-                maxspeed = 10 * getupForceMul,
-                maxspeeddamp = 0.2 * getupForceMul * (self.GettingUp_SyncingToOwner and 3 or 1),
-                maxangular = 350,
+                maxspeed = 45 * getupForceMul * transition,
+                maxspeeddamp = 145 * getupForceMul * (self.GettingUp_SyncingToOwner and 3 or 1),
+                maxangular = 350 * getupForceMul * transition,
                 maxangulardamp = 1350,
-                dampfactor = Lerp((self.GetupAnimModel:GetCycle() - 0.3) / 0.7, 0.2, 0.5),
+                dampfactor = Lerp((anim:GetCycle() - 0.3) / 0.4, 0.2, 0.8),
                 delta = self.GettingUp_SyncingToOwner and 0.1 or 0.2,
                 DontFuckMe = true,
                 addMass = true,
             }
 
         end
+
+        --[[local hull = (own:OBBMaxs() - own:OBBMins()) / 2
+        hull.z = 1
+
+        local tr = rag:WaterLevel() >= 1 and {HitPos = rag:GetPos()} or util.TraceHull({
+            start = rag:GetPos() + Vector(0, 0, 5), 
+            endpos = rag:GetPos() - Vector(0, 0, 64),
+            filter = {rag, own},
+            mins = -hull,
+            maxs = hull,
+        })
+        
+        anim:SetPos(LerpVector(0.2, anim:GetPos(), tr.HitPos))]]
 
     end
 
