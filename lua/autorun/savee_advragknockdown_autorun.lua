@@ -25,6 +25,7 @@ local cvTags = {FCVAR_ARCHIVE,FCVAR_REPLICATED}
 local cv_kd_enabled = CreateConVar(cvPrefix .. "enabled", 1, cvTags, "激活整个插件 *警告! 哪怕这个插件被禁用 某些hook的运算也是会照常运行的!*", 0, 1)
 local cv_kd_enabled_ply = CreateConVar(cvPrefix .. "enableply", 1, cvTags, "对玩家启用击倒", 0, 1)
 local cv_kd_enabled_npc = CreateConVar(cvPrefix .. "enablenpc", 1, cvTags, "对NPC启用击倒", 0, 1)
+--local cv_kd_enabled_nextbot = CreateConVar(cvPrefix .. "enablenextbot", 1, cvTags, "对NextBot启用击倒", 0, 1)
 
 local cv_kd_playdead_enabled = CreateConVar(cvPrefix .. "playdead_enabled", 1, cvTags, "激活假死", 0, 1)
 local cv_kd_playdead_enabled_ply = CreateConVar(cvPrefix .. "playdead_enableply", 1, cvTags, "对玩家启用假死", 0, 1)
@@ -200,7 +201,7 @@ end
 
 local function entTypeCheck(ent)
     if not cv_kd_enabled:GetBool() then return false end
-    if not IsValid(ent) or ent:IsMarkedForDeletion() or ent:Health() <= 0 then return false end
+    if not IsValid(ent) or ent:IsNextBot() or ent:IsMarkedForDeletion() or ent:Health() <= 0 then return false end
     return (ent:IsPlayer() and cv_kd_enabled_ply:GetBool()) or (ent:IsNPC() and cv_kd_enabled_npc:GetBool())
 end
 local function getController(ent)
@@ -727,6 +728,7 @@ funchooks.Add("Entity.GetAngles", "Savee_AdvRagKnockdown_Sync", function(ent, ra
 
     if raw or not entTypeCheck(ent) then return __undetoured(ent, raw, ...) end
     local ctrl = getController(ent)
+
     if not IsValid(ctrl) then return __undetoured(ent, raw, ...) end
     local rag = ctrl:GetRagdoll()
     local _, ang = rag:GetBonePosition(0)
@@ -1187,7 +1189,6 @@ if SERVER then
     end
 
     local function doKnockdown(ply, vec, bone)
-
         if not cv_kd_enabled:GetBool() then return end
         
         if not entTypeCheck(ply) then return end
@@ -1436,7 +1437,6 @@ if SERVER then
     -- 导致我浪费好几个小时的罪魁祸首
     -- 经验证, 可能是布娃娃移除的时机不对/未能消除所有约束导致
     function Savee_AdvRagKnockdown_ReplaceRagConstraint(ctrl, rag, pObjs, bchild, bparent, minAng, maxAng, fric)
-    
         if not IsValid(rag) or not bchild or not bparent then return end
         if not rag:LookupBone(bparent) or not rag:LookupBone(bchild) then return end
 
@@ -1477,9 +1477,6 @@ if SERVER then
 
         SafeRemoveEntityDelayed(ent, tickInterval)
         --ent:Remove()
-
-        lArmP:EnableMotion(false)
-        lHandP:EnableMotion(false)
     
         lArmP:SetPos(armPos)
         lArmP:SetAngles(armAng)
@@ -1505,9 +1502,6 @@ if SERVER then
         
         lHandP:SetPos(oldHandPos)
         lHandP:SetAngles(oldHandAng)
-
-        lArmP:EnableMotion(true)
-        lHandP:EnableMotion(true)
 
 
         --[[if IsValid(const) then 
@@ -1979,6 +1973,14 @@ if SERVER then
         --print(sys)
         return __undetoured(sys, ...)
     end)]]
+
+    -- 兼容
+    hook.Add("BSMod_KillMoveStarted", "Savee_AdvRagKnockdown_PosCorrection", function(ply, tar)
+        local plyCtrl = getController(ply)
+        local tarCtrl = getController(tar)
+        if IsValid(plyCtrl) then plyCtrl:RemoveSelf() end
+        if IsValid(tarCtrl) then tarCtrl:RemoveSelf() end
+    end)
 
 else
 

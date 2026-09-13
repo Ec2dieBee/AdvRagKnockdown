@@ -3415,7 +3415,7 @@ function ENT:CalcView(ply, pos, ang, fov)
 
         -- 高效(?), 相比下面那坨玩意
         local _, wtl = WorldToLocal(vector_origin, aea, vector_origin, eyeang)
-        _, ang = LocalToWorld(vector_origin, clampAng(wtl, -deltaAng), vector_origin, ang)
+        _, ang = LocalToWorld(vector_origin, clampAng(wtl, -deltaAng, deltaAng), vector_origin, ang)
     
     end
 
