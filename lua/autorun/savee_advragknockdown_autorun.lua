@@ -17,8 +17,6 @@
 
 AddCSLuaFile()
 
-SAVEE_ADVRAGKNOCKDOWN_CONTROLLERS = SAVEE_ADVRAGKNOCKDOWN_CONTROLLERS or {}
-
 -- CVs
 local cvPrefix = "savee_advragknockdown_"
 local cvTags = {FCVAR_ARCHIVE,FCVAR_REPLICATED}
@@ -46,9 +44,12 @@ local cv_kd_damagecalc_usetakedamage = CreateConVar(cvPrefix .. "knockdown_useta
 
 local cv_kd_ctrl_useheadang = CreateConVar(cvPrefix .. "control_useheadangles", 0, cvTags, "在玩家转动视角时使用玩家目前的头部朝向计算, 可能会导致无法舒适翻滚", 0, 1)
 local cv_kd_ctrl_luacode_uselocaleyeangles = CreateConVar(cvPrefix .. "control_luacode_uselocaleyeangles", 1, cvTags, "[手感][代码相关] 将要设置的EyeAngles\"局部化\"(经过Roll旋转), 可以解决部分武器包的武器后坐力垂直于地面的问题, 但可能有其它奇怪的现象", 0, 1)
+local cv_kd_ctrl_luacode_dontclampeyeang = CreateConVar(cvPrefix .. "control_luacode_dontclampeyeang", 1, cvTags, "[手感] 瞄准时不钳制玩家的视角(roll仍然会被锁住), 对部分eye设置的很史的模型有奇效, 同时在手感上也和ZCity相似", 0, 1)
 
 local cv_kd_perf_luacode_nexttick = CreateConVar(cvPrefix .. "performance_luacode_nexttick", 0.01, cvTags, "[性能][代码相关] 下次统一运行控制器Tick()的时间, 这个值越大布娃娃效果越拉跨(但性能会好点我猜), 不建议大于0.03", 0)
+local cv_kd_perf_luacode_ctrlamnt = CreateConVar(cvPrefix .. "performance_luacode_maxprocessedcontroller", 10, cvTags, "[性能][代码相关] 一tick间隔(或者是你设置的tick间隔)处理的控制器数量, 设置为0则无上限", 0)
 local cv_kd_perf_luacode_tracelevel = CreateConVar(cvPrefix .. "performance_luacode_tracelevel", 4, cvTags, "[性能][代码相关] 查找Trace的层数, 越高越\"广泛\", 操作涉及到布娃娃的面越广, 但有潜在的性能消耗(低于4的话工具枪无法选择布娃娃)", 0)
+local cv_kd_perf_luacode_deltamul = CreateConVar(cvPrefix .. "performance_luacode_deltamul", 1, cvTags, "[性能][代码相关][需重启] ShadowControl运算中delta的乘数, 把它调低对安装了VPhysics-Box3D的人有帮助 不要让它为0, 推荐值为0.5", 0)
 --local cv_kd_perf_luacode_usecustomdraw = CreateConVar(cvPrefix .. "performance_luacode_usecustomdraw", 1, cvTags, "[性能][代码相关] TBA", 0, 1)
 --local cv_kd_agressivecompability = CreateConVar(cvPrefix .. "agressivecompability", 0, cvTags, "通过覆盖其它钩子", 0)
 
@@ -70,27 +71,35 @@ CreateConVar(cvPrefix .. "statcalc_ply_conscdmgmul", 1, cvTags, "[对玩家] 意
 
 local clcv_ctrl_nodefkeybind = CreateClientConVar(cvPrefix .. "cl_control_disabledefaultkeybind", "0", true, true, "禁用默认的瞄准方法(按住E瞄准), 可能对某些服务器的自定义按键设置有帮助", 0, 1)
 local clcv_ctrl_reversedaiming = CreateClientConVar(cvPrefix .. "cl_control_reversedaiming", "0", true, true, "[仅按住E可用时] 按住E取消瞄准 而不是进行瞄准", 0, 1)
-local clcv_ctrl_altaimkey = CreateClientConVar(cvPrefix .. "cl_control_altaimkey", "0", true, true, "[仅按住E可用时] 按住[慢走键](默认是LAlt)进行瞄准", 0, 1)
 local clcv_ctrl_aim = CreateClientConVar(cvPrefix .. "cl_control_autoaim", "0", true, true, "[仅自定义按键可用时] 击倒时默认开启瞄准(0: 关闭, 1: 仅主动击倒, 2: 任何情况下被击倒(需要服务器打开相关设置!))", 0, 2) -- ToDo: 把2加上
-local clcv_ctrl_getup_smoothtransition = CreateClientConVar(cvPrefix .. "cl_getup_smoothtransitioninterval", "0.15", true, true, "在起身后视角在和老视角和实际视角的过渡时间, 总而言之就是能让起身的视角转换看上去丝滑一点(我相信你不会把它改成1以上的值)", 0)
+CreateClientConVar(cvPrefix .. "cl_control_altaimkey", "0", true, true, "[仅按住E可用时] 按住[慢走键](默认是LAlt)进行瞄准", 0, 1)
+CreateClientConVar(cvPrefix .. "cl_getup_smoothtransitioninterval", "0.15", true, true, "在起身后视角在和老视角和实际视角的过渡时间, 总而言之就是能让起身的视角转换看上去丝滑一点(我相信你不会把它改成1以上的值)", 0)
+--CreateClientConVar(cvPrefix .. "cl_contrl_rollspdmul_sprint", "1.5", true, true, "在起身后视角在和老视角和实际视角的过渡时间, 总而言之就是能让起身的视角转换看上去丝滑一点(我相信你不会把它改成1以上的值)", 0)
+--CreateClientConVar(cvPrefix .. "cl_contrl_rollspdmul_walk", "0.5", true, true, "在起身后视角在和老视角和实际视角的过渡时间, 总而言之就是能让起身的视角转换看上去丝滑一点(我相信你不会把它改成1以上的值)", 0)
+
 --local clcv_perf_usecalcviewmodelview = CreateClientConVar(cvPrefix .. "cl_performance_luacode_usecalcviewmodelview", "1", true, true, "[绘制][代码相关] 是否使用武器的CalcViewModelView, 可能有神秘小Bug", 0, 1)
 
--- 再多一个这样的玩意就把它改成function, 请(
-local var_clcv_ctrl_altaimkey = clcv_ctrl_altaimkey:GetBool()
-cvars.AddChangeCallback(cvPrefix .. "cl_control_altaimkey", function()
-    var_clcv_ctrl_altaimkey = clcv_ctrl_altaimkey:GetBool()
-end)
+local cvVars = {}
+local function addCallback(name, type, prefix)
+    local cv = GetConVar(cvPrefix .. name)
+    local key = (prefix or "") .. name
 
-local var_clcv_ctrl_getup_smoothtransition = clcv_ctrl_getup_smoothtransition:GetFloat()
-cvars.AddChangeCallback(cvPrefix .. "cl_getup_smoothtransitioninterval", function()
-    var_clcv_ctrl_getup_smoothtransition = clcv_ctrl_getup_smoothtransition:GetFloat()
-end)
+    cvVars[key] = cv["Get" .. type](cv)
+    cvars.AddChangeCallback(cvPrefix .. name, function()
+        cvVars[key] = cv["Get" .. type](cv)
+    end)
+end
+addCallback("cl_control_altaimkey", "Bool")
+addCallback("control_luacode_uselocaleyeangles", "Bool")
+addCallback("cl_getup_smoothtransitioninterval", "Float")
+--addCallback("cl_contrl_rollspdmul_sprint", "Float")
+--addCallback("cl_contrl_rollspdmul_walk", "Float")
 
 
-local var_cv_kd_ctrl_luacode_uselocaleyeangles = cv_kd_ctrl_luacode_uselocaleyeangles:GetBool()
-cvars.AddChangeCallback(cvPrefix .. "cl_control_altaimkey", function()
+--[[local var_cv_kd_ctrl_luacode_uselocaleyeangles = cv_kd_ctrl_luacode_uselocaleyeangles:GetBool()
+cvars.AddChangeCallback(cvPrefix .. "control_luacode_uselocaleyeangles", function()
     var_cv_kd_ctrl_luacode_uselocaleyeangles = cv_kd_ctrl_luacode_uselocaleyeangles:GetBool()
-end)
+end)]]
 
 --local entMeta = FindMetaTable("Entity")
 --local plyMeta = FindMetaTable("Player")
@@ -206,9 +215,15 @@ local function getController(ent)
     return ctrl
 end
 
-local function removeFromCtrlList(ent)
-    if not ent then return end
-    SAVEE_ADVRAGKNOCKDOWN_CONTROLLERS[ent] = nil
+local mtx = Matrix()
+local function getBoneMatrixPosAng(rag, name)
+    name = rag:LookupBone(name)
+    if not name then return vector_origin, angle_zero end
+
+    rag:CopyBoneMatrix(name, mtx)
+    if not mtx then return vector_origin, angle_zero end
+
+    return mtx:GetTranslation(), mtx:GetAngles()
 end
 
 local function runThatHook(name, ...)
@@ -298,7 +313,7 @@ for _, str in ipairs(trs) do
 
             for _, e in ipairs(filter) do
 
-                if not IsValid(e) then continue end
+                if not isentity(e) or not IsValid(e) then continue end
                 local ctrl = getController(e)
                 if not IsValid(ctrl) or found[ctrl] then continue end
                 found[ctrl] = true
@@ -708,6 +723,17 @@ funchooks.Add("Entity.GetPos", "Savee_AdvRagKnockdown_Sync", function(ent, raw, 
     return bone
    
 end)
+funchooks.Add("Entity.GetAngles", "Savee_AdvRagKnockdown_Sync", function(ent, raw, ...)
+
+    if raw or not entTypeCheck(ent) then return __undetoured(ent, raw, ...) end
+    local ctrl = getController(ent)
+    if not IsValid(ctrl) then return __undetoured(ent, raw, ...) end
+    local rag = ctrl:GetRagdoll()
+    local _, ang = rag:GetBonePosition(0)
+
+    return (ang:Up()):Angle()
+   
+end)
 
 funchooks.AddPost("Entity.SetPos", "Savee_AdvRagKnockdown_Sync", function(ply, inputs, ...)
 
@@ -898,8 +924,8 @@ hook.Add("EntityFireBullets", "Savee_AdvRagKnockdown_HitScanMod", function(ent, 
   
                 -- 神秘Bug, 我忘记重名的事了
                 btr.HitBoxBone = bone
-                btr.HitBox = rag.Savee_AdvRagKnockdown_HitBoxes[bone]
-                btr.HitGroup = hitGroup --own:GetHitBoxHitGroup(rag.Savee_AdvRagKnockdown_HitBoxes[bone], 0)
+                btr.HitBox = rag.Savee_AdvRagKnockdown_HitBoxes[bone] or btr.HitBox
+                btr.HitGroup = hitGroup or btr.HitGroup --own:GetHitBoxHitGroup(rag.Savee_AdvRagKnockdown_HitBoxes[bone], 0)
                 btr.Entity = own
             end
             --di:SetDamage(114514)
@@ -960,7 +986,7 @@ hook.Add("EntityFireBullets", "Savee_AdvRagKnockdown_HitScanMod", function(ent, 
 
     --bullet.Src = eyePos
 
-    local handpos, handang = rag:GetBonePosition(rag:LookupBone("ValveBiped.Bip01_R_Hand"))
+    local handpos, handang = getBoneMatrixPosAng(rag, "ValveBiped.Bip01_R_Hand")
     handpos, handang = LocalToWorld(handPosDelta, Angle(), handpos, handang)
 
     --[[local tr = util.TraceLine({
@@ -1002,10 +1028,10 @@ hook.Add("EntityFireBullets", "Savee_AdvRagKnockdown_HitScanMod", function(ent, 
         filter = {ent, rag},
         mask = MASK_SHOT,
     })]]
-
+    local aimDir = ctrl:GetAimEyeAngles():Forward()
     local aimTr = util.TraceLine({
-        start = eyePos,
-        endpos = eyePos + ctrl:GetAimEyeAngles():Forward() * 65536,
+        start = eyePos + aimDir * 15,
+        endpos = eyePos + aimDir * 65536,
         filter = ent,
         mask = MASK_SHOT,
         getRaw = true,
@@ -1016,8 +1042,8 @@ hook.Add("EntityFireBullets", "Savee_AdvRagKnockdown_HitScanMod", function(ent, 
     -- 有效防止MTM Neutrino Cannon 把你囊死的问题
     if not IsValid(bullet.IgnoreEntity) and rHD <= 0.15 and (aimTr.Entity ~= rag or whitelistedBones[rag:GetBoneName(rag:TranslatePhysBoneToBone(aimTr.PhysicsBone) or -1)]) then
         bullet.IgnoreEntity = ctrl:GetRagdoll()
-    --[[else
-        print(1)]]
+    --else
+        --print(IsValid(bullet.IgnoreEntity), rHD, rag:GetBoneName(rag:TranslatePhysBoneToBone(aimTr.PhysicsBone)), aimTr.Entity ~= rag)
     end
 
     return true --__undetoured(ent, bullet)
@@ -1060,24 +1086,43 @@ hook.Add("Move", "Savee_AdvRagKnockdown_RagMoveOverride", function(ply, mv)
 
 end)
 
-local nextTick = -1
-hook.Add("Tick", "Savee_AdvRagKnockdown_CtrlTick", function()
-    --do return end
-    local ct = CurTime()
+local tickCo = coroutine.create(function()
+    while true do
+        local time = math.max(tickInterval, cv_kd_perf_luacode_nexttick:GetFloat())
+        local isFucked = cv_kd_perf_luacode_ctrlamnt:GetInt() ~= 0
+        local amnt = 0
 
-    --if CLIENT then return end
-    --print("Call")
+        local ctrls = ents.FindByClass("ent_savee_advragknockdown_ctrl")
+        table.sort(ctrls, function(a)
+            local own = a:GetOwner()
+            if not IsValid(own) then return end
 
-    if ct < nextTick then return end
-    nextTick = ct + cv_kd_perf_luacode_nexttick:GetFloat()
-
-    for ent, _ in pairs(SAVEE_ADVRAGKNOCKDOWN_CONTROLLERS) do
-        if not IsValid(ent) or ent:IsMarkedForDeletion() then removeFromCtrlList(ent) continue end
+            return a:IsPlayer()
+        end)
         
-        local own = ent:GetOwner()
-        if not IsValid(ent:GetRagdoll()) or not IsValid(own) or own:IsMarkedForDeletion() or own:Health() <= 0 then ent:RemoveSelf() continue end
-        ent:Tick()
+        for _, ent in ipairs(ctrls) do
+            if not IsValid(ent) or ent:IsMarkedForDeletion() then continue end
+            
+            local own = ent:GetOwner()
+            if not IsValid(ent:GetRagdoll()) or not IsValid(own) or own:IsMarkedForDeletion() or own:Health() <= 0 then ent:RemoveSelf() continue end
+
+            ent:Tick()
+            if own:IsPlayer() then continue end
+
+            amnt = amnt + 1
+            if isFucked and amnt >= cv_kd_perf_luacode_ctrlamnt:GetInt() then
+                amnt = 0
+                coroutine.wait(time)
+            end
+        end
+        coroutine.wait(time)
     end
+end)
+
+hook.Add("Tick", "Savee_AdvRagKnockdown_CtrlTick", function()
+    if coroutine.status(tickCo) == "suspended" then
+        coroutine.resume(tickCo)
+    end    
 end)
 
 hook.Add("CalcMainActivity", "Savee_AdvRagKnockdown_Correction", function(ply)
@@ -1207,6 +1252,12 @@ if SERVER then
 
     end
 
+    local mvBlacklist = {
+        [MOVETYPE_VPHYSICS] = true,
+        [MOVETYPE_FLY] = true,
+        [MOVETYPE_FLYGRAVITY] = true,
+    }
+
     local function calcRagDamage(rag, di, take)
 
         --if not cv_kd_enabled:GetBool() then return end
@@ -1218,8 +1269,7 @@ if SERVER then
         if not IsValid(ctrl) then return end
         --print(di, rag, ctrl.DI_MarkedAsTaken[di])
 
-        --print(di)
-
+        
         if not take or not IsValid(ctrl) or ctrl:IsMarkedForDeletion() or ctrl.DI_MarkedAsTaken[di] then
             return
         end
@@ -1292,14 +1342,17 @@ if SERVER then
         print("对Rag的Own造成伤害: ", rag, own, di)
         ctrl.DI_GoingToTake[#ctrl.DI_GoingToTake + 1] = tbl
         ctrl.DI_MarkedAsTaken[di] = true]]
-    
-        if atk:IsNPC() or atk:IsPlayer() or atk:IsNextBot() or atk:GetClass() == "func_breakable_surf" then
-            di:SetDamage(math.floor(dmg / 10))
+        local inf = di:GetInflictor()
+
+        if IsValid(inf) and (atk:IsRagdoll() or (inf ~= atk and ((inf:IsNPC() and not mvBlacklist[inf:GetMoveType()]) or inf:IsPlayer() or inf:IsNextBot() or inf:GetClass() == "func_breakable_surf"))) then
+            di:SetDamage(math.floor(dmg / 50))
         end
 
         ctrl:DoBrainDamages(di)
         ctrl.DI_MarkedAsTaken[di] = true
         own:TakeDamageInfo(di, true)
+
+        --print(rag, own, di)
 
         --[[if di:GetDamage() >= own:Health() then
             --ctrl:Remove()
@@ -1332,15 +1385,17 @@ if SERVER then
         if not entTypeCheck(ent) then return end
 
         
-        local dmg = di:GetDamage()
         local hp = ent:Health()
         if hp <= 0 then return end
 
-        local result, should = runThatHook("Savee_AdvRagKnockdown_ShouldKnockdown", ent, di, take)
-        if result and not should then return end
+        if di then
+            local dmg = di:GetDamage()
+            local result, should = runThatHook("Savee_AdvRagKnockdown_ShouldKnockdown", ent, di, take)
+            if result and not should then return end
 
-        if dmg <= cv_kd_knockdown_mindamage:GetFloat() and di:GetDamageForce():Length() < cv_kd_knockdown_mindamageforce:GetFloat() then return end
-        --print(ent:Health())
+            if dmg <= cv_kd_knockdown_mindamage:GetFloat() and di:GetDamageForce():Length() < cv_kd_knockdown_mindamageforce:GetFloat() then return end
+        end
+            --print(ent:Health())
         --if dmg >= ent:Health() or ent:Health() <= 0 then return end
         --print("我要被踹翻了Help: ", ent, di)
 
@@ -1370,7 +1425,7 @@ if SERVER then
         --do return end
 
         doKnockdown(ent, di)
-
+        return true
     end
     
     Savee_AdvRagKnockdown_DMGKnockdown = doKnockdownDetection
@@ -1380,7 +1435,7 @@ if SERVER then
     -- 甲级战犯, 崩溃主要导致者(对NPC 我猜)
     -- 导致我浪费好几个小时的罪魁祸首
     -- 经验证, 可能是布娃娃移除的时机不对/未能消除所有约束导致
-    function Savee_AdvRagKnockdown_ReplaceRagConstraint(rag, pObjs, bchild, bparent, minAng, maxAng, fric)
+    function Savee_AdvRagKnockdown_ReplaceRagConstraint(ctrl, rag, pObjs, bchild, bparent, minAng, maxAng, fric)
     
         if not IsValid(rag) or not bchild or not bparent then return end
         if not rag:LookupBone(bparent) or not rag:LookupBone(bchild) then return end
@@ -1425,14 +1480,14 @@ if SERVER then
 
         lArmP:EnableMotion(false)
         lHandP:EnableMotion(false)
-
+    
         lArmP:SetPos(armPos)
         lArmP:SetAngles(armAng)
 
         lHandP:SetPos(handPos)
         lHandP:SetAngles(handAng)
 
-        local wtlLH = WorldToLocal(lHandP:GetPos(), lHandP:GetAngles(), lArmP:GetPos(), lArmP:GetAngles())
+        local wtlLH = WorldToLocal(handPos, handAng, armPos, armAng)
 
         --lHandP:SetAngles(oldArmAng)
         -- 瞧瞧我发现了什么, phys_ragdollconstraint!
@@ -1442,16 +1497,22 @@ if SERVER then
         --local const = constraint.AdvBallsocket(rag, rag, lArm, lHand, wtlLH, nil, 0, 0, minAng.p, minAng.y, minAng.r, maxAng.p, maxAng.y, maxAng.r, fric, fric, fric, 0, 1)
         --local _, correctedAng = LocalToWorld(vector_origin, Angle(0, 0, -90), vector_origin, lArmP:GetAngles())
         --lHandP:SetAngles(correctedAng)
-        constraint.AdvBallsocket(rag, rag, lArm, lHand, wtlLH, nil, 0, 0, minAng.p, minAng.y, minAng.r, maxAng.p, maxAng.y, maxAng.r, fric, fric, fric, 0, 1)
+        local const = constraint.AdvBallsocket(rag, rag, lArm, lHand, wtlLH, nil, 0, 0, minAng.p, minAng.y, minAng.r, maxAng.p, maxAng.y, maxAng.r, fric, fric, fric, 0, 1)
         rag:RemoveInternalConstraint(lHand)
 
         lArmP:SetPos(oldArmPos)
         lArmP:SetAngles(oldArmAng)
+        
         lHandP:SetPos(oldHandPos)
         lHandP:SetAngles(oldHandAng)
 
         lArmP:EnableMotion(true)
         lHandP:EnableMotion(true)
+
+
+        --[[if IsValid(const) then 
+            table.insert(ctrl.ReplacedConsts, {lHandP, lArmP, wtlLH, lHandP:GetMass(), lArmP:GetMass()})
+        end]]
 
 
         --lHandP:SetAngles(oldArmAng)
@@ -1471,14 +1532,17 @@ if SERVER then
     end
 
     function Savee_AdvRagKnockdown_ReplaceRagConstraints(rag, pObjs)
-        local angMax = Angle(75, 80, 80)
-        Savee_AdvRagKnockdown_ReplaceRagConstraint(rag, pObjs, "ValveBiped.Bip01_L_Hand", "ValveBiped.Bip01_L_Forearm", -angMax, angMax, 0)
-        Savee_AdvRagKnockdown_ReplaceRagConstraint(rag, pObjs, "ValveBiped.Bip01_R_Hand", "ValveBiped.Bip01_R_Forearm", -angMax, angMax, 0)
-    
-        Savee_AdvRagKnockdown_ReplaceRagConstraint(rag, pObjs, "ValveBiped.Bip01_Head1", "ValveBiped.Bip01_Spine2", -Angle(15, 60, 50), Angle(15, 40, 50), 0)
+        local ctrl = getController(rag)
 
-        Savee_AdvRagKnockdown_ReplaceRagConstraint(rag, pObjs, "ValveBiped.Bip01_L_UpperArm", "ValveBiped.Bip01_Spine2", -angMax, angMax, 0)
-        Savee_AdvRagKnockdown_ReplaceRagConstraint(rag, pObjs, "ValveBiped.Bip01_R_UpperArm", "ValveBiped.Bip01_Spine2", -angMax, angMax, 0)
+        local angMax = Angle(75, 80, 80)
+        Savee_AdvRagKnockdown_ReplaceRagConstraint(ctrl, rag, pObjs, "ValveBiped.Bip01_L_Hand", "ValveBiped.Bip01_L_Forearm", -angMax, angMax, 0)
+        Savee_AdvRagKnockdown_ReplaceRagConstraint(ctrl, rag, pObjs, "ValveBiped.Bip01_R_Hand", "ValveBiped.Bip01_R_Forearm", -angMax, angMax, 0)
+    
+        Savee_AdvRagKnockdown_ReplaceRagConstraint(ctrl, rag, pObjs, "ValveBiped.Bip01_Head1", "ValveBiped.Bip01_Spine2", -Angle(15, 60, 50), Angle(15, 40, 50), 0)
+
+        angMax = Angle(80, 80, 80)
+        Savee_AdvRagKnockdown_ReplaceRagConstraint(ctrl, rag, pObjs, "ValveBiped.Bip01_L_UpperArm", "ValveBiped.Bip01_Spine2", -angMax, angMax, 0)
+        Savee_AdvRagKnockdown_ReplaceRagConstraint(ctrl, rag, pObjs, "ValveBiped.Bip01_R_UpperArm", "ValveBiped.Bip01_Spine2", -angMax, angMax, 0)
 
     end
 
@@ -1692,7 +1756,7 @@ if SERVER then
         if not IsValid(ctrl) then return end 
         ent = ctrl:GetOwner()
 
-        if not ent:IsNPC() or ent:Disposition(ply) < D_LI then return end
+        if not ent:IsNPC() or (ent:Disposition(ply) < D_LI and not GetConVar("ai_ignoreplayers"):GetBool()) then return end
         
         ctrl:TryGetUp()
         
@@ -1709,12 +1773,14 @@ if SERVER then
     
     hook.Add("PostCleanupMap", "Savee_AdvRagKnockdown_ResetRagdoll", function()
     
-        for ent, _ in pairs(SAVEE_ADVRAGKNOCKDOWN_CONTROLLERS) do
-            if not IsValid(ent) or ent:IsMarkedForDeletion() then removeFromCtrlList(ent) continue end
+        for _, ent in ipairs(ents.FindByClass("ent_savee_advragknockdown_ctrl")) do
+            if not IsValid(ent) or ent:IsMarkedForDeletion() then continue end
             
             local own = ent:GetOwner()
             local rag = ent:GetRagdoll()
-            if not IsValid(rag) or not IsValid(own) or not own:IsPlayer() or not own:Alive() then ent:RemoveSelf() continue end
+            if not IsValid(rag) or not IsValid(own) or not own:IsPlayer() or not own:Alive() 
+            or own.inKillMove
+            then ent:RemoveSelf() continue end
 
             Savee_AdvRagKnockdown_ReplaceRagConstraints(rag, ent.RagPObjs)
         end
@@ -1732,15 +1798,20 @@ if SERVER then
     hook.Add("PhysgunPickup", "Savee_AdvRagKnockdown_TransStuffIntoRag", function(ply, ent, fucked)
         if fucked or not cv_kd_knockdown_physgun:GetBool() or ply == ent or not entTypeCheck(ent) then return end
         if not hook.Run("PhysgunPickup", ply, ent, true) then return false end
-        
-        doKnockdown(ent)
-        return false
+
+        return not doKnockdownDetection(ent, nil, true)
     end)
+    hook.Add("OnPhysgunPickup", "Savee_AdvRagKnockdown_TransGetUpIntoSleep", function(ply, ent)
+        local ctrl = getController(ent)
+        if not ent:IsRagdoll() or not IsValid(ctrl) then return end
+        
+        ctrl:CancelGetUp()
+    end)
+
     hook.Add("GravGunPunt", "Savee_AdvRagKnockdown_TransStuffIntoRag", function(ply, ent, fucked)
         if fucked or not cv_kd_knockdown_gravgun:GetBool() or ply == ent or not entTypeCheck(ent) then return end
-        if hook.Run("GravGunPunt", ply, ent, true) == false then return false end
+        if hook.Run("GravGunPunt", ply, ent, true) == false or not doKnockdownDetection(ent, nil, true) then return false end
         
-        doKnockdown(ent)
         return true
     end)
 
@@ -1997,7 +2068,7 @@ else
         local rag = ctrl:GetRagdoll()
         local consc = ctrl:GetConsciousness()
 
-        local deltaAng = Angle(y, x) * tickInterval
+        local deltaAng = Angle(y, x) * (isSP and 1 / 66 or tickInterval)
 
         local conscLerp = math.ease.OutQuint(consc / 100)
 
@@ -2037,6 +2108,7 @@ else
         end
 
         local conscLerp = math.ease.OutQuint(consc / 100)
+        --local manualMul = not cmd:KeyDown(IN_FORWARD) and (cmd:KeyDown(IN_SPEED) and cvVars.cl_contrl_rollspdmul_sprint or cmd:KeyDown(IN_WALK) and cvVars.cl_contrl_rollspdmul_walk) or 1
 
         if ctrl:GetParent() ~= ctrl:GetRagdoll() then
             oldAng.r = math.Approach(oldAng.r, 0, 15)
@@ -2050,7 +2122,7 @@ else
 
         local aimingBind = clcv_ctrl_nodefkeybind:GetBool() and input.LookupBinding("+advragknockdown_aimweapon") or input.LookupBinding(cvPrefix .. "toggleaimweapon")
 
-        local newAimingState = cmd:KeyDown(var_clcv_ctrl_altaimkey and IN_WALK or IN_USE)
+        local newAimingState = cmd:KeyDown(cvVars.cl_control_altaimkey and IN_WALK or IN_USE)
         
         -- 世界上最聪明的解决方案
         if clcv_ctrl_reversedaiming:GetBool() then newAimingState = not newAimingState end
@@ -2102,7 +2174,7 @@ else
         local ct = CurTime()
 
         if returnCheck(self) then 
-            local calcview_transtime = var_clcv_ctrl_getup_smoothtransition
+            local calcview_transtime = cvVars.cl_getup_smoothtransitioninterval
             local lerp = (ct - calcview_last_stored) / calcview_transtime
 
             return calcview_last_stored + calcview_transtime >= ct and {
@@ -2136,7 +2208,7 @@ else
         if returnCheck(self) then
             local ct = CurTime()
             
-            local calcview_transtime = var_clcv_ctrl_getup_smoothtransition
+            local calcview_transtime = cvVars.cl_getup_smoothtransitioninterval
             local lerp = (ct - calcview_last_stored) / calcview_transtime
 
             if calcview_last_stored + calcview_transtime < ct then return end
@@ -2279,7 +2351,7 @@ else
         local pos = oldPos + rag:OBBCenter() - Vector(0, 0, 16) -- 目前来看这么做可以模拟布娃娃的光照
     
         rag:SetPos(pos)
-        --own:SetPos(pos)
+        --own:SetPos(pos, true)
 
         render.SetLightingOrigin(pos)
 
