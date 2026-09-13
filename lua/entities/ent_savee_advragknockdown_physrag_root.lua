@@ -1,5 +1,5 @@
 -- 然后那天她/他告诉我: 你也就这样了, 趁早死了算了
--- 我是指 - 既然我已经知道ragdoll resizer是怎么做的了 为什么不现在开干呢
+-- 我是指 - 既然我已经知道ragdoll resizer是怎么做的了(指PhysObj:GetMeshConvexes()) 为什么不现在开干呢
 
 AddCSLuaFile()
 ENT.Base = "base_anim"
@@ -19,9 +19,9 @@ function ENT:Initialize()
     ent:SetPos(ply:GetEyeTrace().HitPos + Vector(0, 0, 10))
 
     local tbl = {}
-    local scl = 3 or ply:GetModelScale()
+    local scl = ply:GetModelScale()
     scl = Vector(scl, scl, scl)
-
+    
     for i = 0, 31 do
         tbl[i] = scl
     end

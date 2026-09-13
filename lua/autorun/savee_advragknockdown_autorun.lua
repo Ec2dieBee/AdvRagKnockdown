@@ -887,12 +887,15 @@ funchooks.Add("CUserCmd.SetViewAngles", "Savee_AdvRagKnockdown_RecoilCorrection"
 end)
 
 -- 武器支持
-hook.Add("EntityFireBullets", "Savee_AdvRagKnockdown_HitScanMod", function(ent, bullet)
+hook.Add("EntityFireBullets", "Savee_AdvRagKnockdown_HitScanMod", function(ent, bullet, fucked)
     --local wep = ent
+    if fucked then return end
     if ent:IsWeapon() then ent = ent:GetOwner() end
     
     if SERVER then
-        local cb = bullet.Callback
+        local newbullet = table.Copy(bullet)
+        hook.Run("EntityFireBullets", ent, newbullet, true)
+        local cb = newbullet.Callback or bullet.Callback
         bullet.Callback = function(attacker, btr, di)
             --BTR!???????
 
