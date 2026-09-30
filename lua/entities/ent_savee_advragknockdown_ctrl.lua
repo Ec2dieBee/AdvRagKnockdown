@@ -20,6 +20,7 @@
 -- Done: 让Miku可以舒适的射击(G🐀神秘更新让JiggleBones强制替代了PhysBone 26/8/2 不知道怎么又改回去了 26/8/19 疑似插件导致🐹🐹🐹)
 -- ToDo: 加个切换伸手的可选项(CL/SV)
 AddCSLuaFile()
+local getController = Savee_AdvRagKnockdown_GetController
 
 local cvPrefix = "savee_advragknockdown_"
 local isSP = game.SinglePlayer()
@@ -922,7 +923,10 @@ function ENT:Initialize()
     rag:Spawn()
     rag.Savee_AdvRagKnockdown_Controller = self
 
-    if own:IsNPC() and getCV("npc_usehook_createentityragdoll", "Bool") then
+    if own:IsNPC() and 
+        (getCV("npc_usehook_createentityragdoll", "Bool") 
+        or self.PlayingDead and getCV("npc_usehook_createentityragdoll", "Bool")) 
+    then
         local hooks = hook.GetTable().CreateEntityRagdoll
         for _, id in ipairs(wlCERHooks) do
             hooks[id](own, rag, true)
@@ -940,9 +944,6 @@ function ENT:Initialize()
     --modifyRagdoll(rag)
 
     rag:SetNW2Entity("Savee_AdvRagKnockdown_Controller", self)
-
-    self:StartMotionController()
-    self:AddToMotionController(rag:GetPhysicsObject())
 
     -- noob gore mod 2支持
     rag.destructible_Corpse = false
@@ -1126,10 +1127,21 @@ function ENT:Initialize()
         if not IsValid(self) or not IsValid(rag) then return end
         -- [ARC9] Modern Warfare 2019 飞刀支持
         modifyRagdoll(rag, pObjs, ownVel)
-        
+
+        --local oldIdealYaw = own:GetAngles().y
         own:SetMoveParent(rag)
+
+        --[[if own:IsNPC() then
+            own:SetIdealYawAndUpdate(oldIdealYaw)
+        end]]
+
+        self:StartMotionController()
+        self:AddToMotionController(rag:GetPhysicsObject())
+        
         self.Initialized = true
     end)
+
+    self.m_bOwnNoTarget = own:IsFlagSet(FL_NOTARGET)
 
     self.m_iOwnMoveType = own:GetMoveType()
     self.m_iOwnCollisionGroup = own:GetCollisionGroup()
@@ -1587,8 +1599,8 @@ function ENT:Think()
     local eyeatt = rag:LookupAttachment("eyes")
     if eyeatt == 0 then return end
 
-    local eyepos = rag:GetAttachment(eyeatt).Pos
-    local eyeang = rag:GetAttachment(eyeatt).Ang
+    --local eyepos = rag:GetAttachment(eyeatt).Pos
+    --local eyeang = rag:GetAttachment(eyeatt).Ang
 
     local aea = self:GetAimEyeAngles()
     local stamina, consc = self:GetStamina(), self:GetConsciousness()
@@ -1599,52 +1611,65 @@ function ENT:Think()
     if not isPly then
         ---@cast own NPC
 
-        --print(self:GetRArmDelta())
-        local goal = own:GetCurWaypointPos()
-        if goal == vector_origin then goal = own:GetGoalPos() end
-
-        local hasGoal = self:GetCachedVar("NPC_HasMoveGoal", goal ~= vector_origin)
-    
-        if hasGoal then
-            self.Caches.NPC_LastGoalUpdate = ct --hasGoal and goal
-            self:SetCachedVar("NPC_MoveGoal", goal, 1)
-            self:SetCachedVar("NPC_HasMoveGoal", hasGoal, math.random(2, 4))
-
-            local noArm = noAimHTs[IsValid(wep) and wep:GetHoldType() or ""]
-            self:SetCachedVar("NPC_ShouldRHand", self:GetCachedVar("NPC_ShouldRHand", not self:GetCachedVar("NPC_ShouldRHand")), noArm and 0.8 or 0.4)
-        else
-            self:SetCachedVar("NPC_HasMoveGoal", hasGoal, 0.1)
-        end
-        self:SetCachedVar("NPC_CanGetUpVar", math.random(100) >= 85, math.Rand(3, 7))
-
-        self.LowPose = hasGoal
-
-        local target = own:GetNPCState() == NPC_STATE_SCRIPT and own:GetTarget() or own:GetEnemy()
-        if IsValid(target) then
-            --print(target)
-            local sPos = own:GetShootPos()
-            local aim = target:BodyTarget(own:GetShootPos(true)) --(target:GetPos() + target:OBBCenter() - sPos):Angle()
-            aim = (aim - sPos):Angle()
-            aim:Normalize()
-            
-            --aim.r = aea.r
-            --aim.y = own:GetIdealYaw()
-            --print(aim)
-            self:SetAimEyeAngles(aim) --LerpAngle(0.5, aea, aim))
-        else
-            local stuff = own:EyeAngles(true)
-            stuff.y = own:GetIdealYaw()
-            self:SetAimEyeAngles(LerpAngle(0.5, aea, stuff))
+        if not self.m_bOwnNoTarget then
+            if self.PlayingDead and getCV("playdead_npc_notarget", "Bool") then
+                own:AddFlags(FL_NOTARGET)
+            else
+                own:RemoveFlags(FL_NOTARGET)
+            end
         end
 
-        --ListConditions(own)
+        if self.PlayingDead then
+            self:PlayDeadThink(own, ct)
+        else
+            --print(self:GetRArmDelta())
+            local goal = own:GetCurWaypointPos()
+            if goal == vector_origin then goal = own:GetGoalPos() end
+
+            local hasGoal = self:GetCachedVar("NPC_HasMoveGoal", goal ~= vector_origin)
         
-        local ang = Angle(0, aea.y, 0)
-        own:SetAngles(ang)
+            if hasGoal then
+                self.Caches.NPC_LastGoalUpdate = ct --hasGoal and goal
+                self:SetCachedVar("NPC_MoveGoal", goal, 1)
+                self:SetCachedVar("NPC_HasMoveGoal", hasGoal, math.random(2, 4))
+
+                local noArm = noAimHTs[IsValid(wep) and wep:GetHoldType() or ""]
+                self:SetCachedVar("NPC_ShouldRHand", self:GetCachedVar("NPC_ShouldRHand", not self:GetCachedVar("NPC_ShouldRHand")), noArm and 0.8 or 0.4)
+            else
+                self:SetCachedVar("NPC_HasMoveGoal", hasGoal, 0.1)
+            end
+            self:SetCachedVar("NPC_CanGetUpVar", math.random(100) >= 85, math.Rand(3, 7))
+
+            self.LowPose = hasGoal
+
+            local target = own:GetNPCState() == NPC_STATE_SCRIPT and own:GetTarget() or own:GetEnemy()
+            if IsValid(target) then
+                --print(target)
+                local sPos = own:GetShootPos()
+                local aim = target:BodyTarget(own:GetShootPos(true)) --(target:GetPos() + target:OBBCenter() - sPos):Angle()
+                aim = (aim - sPos):Angle()
+                aim:Normalize()
+
+                --aim.r = aea.r
+                --aim.y = own:GetIdealYaw()
+                --print(aim)
+                self:SetAimEyeAngles(aim) --LerpAngle(0.5, aea, aim))
+            else
+                local stuff = own:EyeAngles(true)
+                stuff.y = own:GetIdealYaw()
+                self:SetAimEyeAngles(LerpAngle(0.5, aea, stuff))
+            end
+
+            --ListConditions(own)
+
+            local ang = Angle(0, aea.y, 0)
+            own:SetAngles(ang)
 
 
-        --own:SetLocalAngles(ang)
-        --own:SetPos(rag:GetPos() - own:OBBCenter(), true)
+            --own:SetLocalAngles(ang)
+            --own:SetPos(rag:GetPos() - own:OBBCenter(), true)
+
+        end
 
         if consc < 45 then
             own:NextThink(ct + 0.15)
@@ -1984,6 +2009,29 @@ function ENT:Think()
 
 end
 
+-- sent_ragknockdown_knockdown.lua 但优化更好
+---@param own NPC
+function ENT:PlayDeadThink(own, ct)
+    local enemyInSight, timeLimit = false, getCV("playdead_npc_deployattack_timer", "Float")
+    local allies = 0
+    for _, enemy in ipairs(own:GetKnownEnemies()) do
+        if ct - own:GetEnemyLastTimeSeen(enemy) <= timeLimit then enemyInSight = true break end
+	end
+
+    for _, ent in ipairs(ents.FindInSphere(self:GetPos(), getCV("playdead_npc_allydist", "Int"))) do
+        if not IsValid(ent) or ent == own or (ent:IsPlayer() and GetConVar("ai_ignoreplayers"):GetBool()) or own:Disposition(ent) ~= D_LI then continue end
+        
+        local ctrl = getController(ent)
+        if IsValid(ctrl) and ctrl.PlayingDead then continue end
+
+        allies = allies + 1
+    end
+
+    self.PlayingDead = allies <= getCV("playdead_npc_allyamnt", "Int") or not enemyInSight
+
+end
+
+
 local shadowDatas = {
     --"maxspeed",
     "maxangular",
@@ -2015,14 +2063,14 @@ local legDelta = 35
 
 local deltamul = getCV("performance_luacode_deltamul", "Float")
 
-local torsoang, torsoangdamp, torsospd, torsospddamp, torsodampfactor, torsodelta = 125, 65, 0, 0, 1, isSP and 0.07 or 0.1
+local torsoang, torsoangdamp, torsospd, torsospddamp, torsodampfactor, torsodelta = 225, 165, 0, 0, 1, isSP and 0.07 or 0.1
 --local torsomovespd, torsomovespddamp, torsomovespddelta = 450, 450, 0.2
 local headang, headangdamp, headspd, headspddamp, headdampfactor, headdelta = 30, 30, 0, 0, 1, 0.1
 local handang, handangdamp, handspd, handspddamp, handdampfactor, handdelta = 350, 250, 20, 0, 0.8, 0.08
 local handaimang, handaimangdamp, handaimspd, handaimspddamp, handaimdampfactor, handaimdelta = 225, 135, 0, 0, 0.8, isSP and 0.05 or 0.08
-local armaimang, armaimangdamp, armaimspd, armaimspddamp, armaimdampfactor, armaimdelta = 175, 250, 0, 0, 0.8, 0.15
+local armaimang, armaimangdamp, armaimspd, armaimspddamp, armaimdampfactor, armaimdelta = 175, 250, 0, 0, 0.8, 0.1
 local pelvisang, pelvisangdamp, pelvisspd, pelvisspddamp, pelvisdampfactor, pelvisdelta = 0, 10, 0, 0, 0.8, 0.15
-local legang, legangdamp, legspd, legspddamp, legsdampfactor, legsdelta = 5, 5, 0, 0, 0.5, 0.2
+local legang, legangdamp, legspd, legspddamp, legsdampfactor, legsdelta = 10, 5, 0, 0, 0.5, 0.2
 
 torsodelta = torsodelta * deltamul
 headdelta = headdelta * deltamul
@@ -2791,6 +2839,8 @@ function ENT:Tick()
 
     --own:SetIdealActivity(ACT_RANGE_ATTACK1)
 
+    if self.PlayingDead then return end
+
     local pObjs = self.RagPObjs
 
     local stamina, consc = self:GetStamina(), self:GetConsciousness()
@@ -3018,7 +3068,7 @@ function ENT:Tick()
             if not IsValid(lWinch) then
                 local data = self.LHand_GrabbingData
                 -- Z-City的参数(给我的感觉), 和我进去爬的时候的手部位置几乎一致
-                lWinch = constraint.Elastic(rag, data.ent, pObjs["ValveBiped.Bip01_Spine2"].id, data.pObjID, (Vector(self.LowPose and -1 or -6, 6, 2) - aea:Forward()), data.wtlPos, spd, 250, 1, "", 0, true, Color(255, 255, 255, 0))
+                lWinch = constraint.Elastic(rag, data.ent, pObjs["ValveBiped.Bip01_Spine2"].id, data.pObjID, (Vector(self.LowPose and 0 or -6, 6, 2) - aea:Forward()), data.wtlPos, spd, 250, 1, "", 0, true, Color(255, 255, 255, 0))
                 if lWinch then 
                     const:DeleteOnRemove(lWinch)
                 end
@@ -3071,7 +3121,7 @@ function ENT:Tick()
 
             if not IsValid(rWinch) then
                 local data = self.RHand_GrabbingData
-                rWinch = constraint.Elastic(rag, data.ent, pObjs["ValveBiped.Bip01_Spine2"].id, data.pObjID, (Vector(self.LowPose and -1 or -6, 6, -2) - aea:Forward()), data.wtlPos, spd, 250, 1, "", 0, true, Color(255, 255, 255, 0))
+                rWinch = constraint.Elastic(rag, data.ent, pObjs["ValveBiped.Bip01_Spine2"].id, data.pObjID, (Vector(self.LowPose and 0 or -6, 6, -2) - aea:Forward()), data.wtlPos, spd, 250, 1, "", 0, true, Color(255, 255, 255, 0))
                 if rWinch then constR:DeleteOnRemove(rWinch) end
 
                 self.RHand_Grabbing_Winch = rWinch
@@ -3114,7 +3164,9 @@ end
 
 
 -- 这是他妈的神迹!!!!!!!
-function ENT:PhysicsSimulate(_, delta)
+function ENT:PhysicsSimulate()
+    if self.PlayingDead then return end
+
     local own = self:GetOwner()
     local rag = self:GetRagdoll()
     local aea = self:GetAimEyeAngles()
@@ -3303,7 +3355,7 @@ function ENT:CustomRagRenderOverride(fl)
     if not shouldDrawRagdoll then return end
     --if not shouldDrawVM then return end
     
-    local ctrl = Savee_AdvRagKnockdown_GetController(self)
+    local ctrl = getController(self)
     if not IsValid(ctrl) then return end
     local own = ctrl:GetOwner()
     local ve = LocalPlayer():GetViewEntity()

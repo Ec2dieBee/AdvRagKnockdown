@@ -18,9 +18,17 @@
 
 AddCSLuaFile()
 
+SAVEE_ADVRAGKNOCKDOWN_LOWPRIOHOOKS = {}
+local lowpriohook = {}
+lowpriohook.Add = function(name, id, func)
+    table.insert(SAVEE_ADVRAGKNOCKDOWN_LOWPRIOHOOKS, {name, id, func})
+end
+
 -- CVs
 local cvPrefix = "savee_advragknockdown_"
 local cvTags = {FCVAR_ARCHIVE,FCVAR_REPLICATED}
+
+local debugging = CreateConVar(cvPrefix .. "_debugging", 0, {}, "测试模式, 目前只会在单人模式下在你热重载!!savee_advragknockdown_autorun时顺带热重载另外一个lua", 0, 1)
 
 -- 证明我抄袭了RagKnockdown的有力证据 7.25: 现在没有了 8.7: 你要不看看上面呢
 local cv_kd_enabled = CreateConVar(cvPrefix .. "enabled", 1, cvTags, "激活整个插件 *警告! 哪怕这个插件被禁用 某些hook的运算会照常运行!*", 0, 1)
@@ -31,6 +39,16 @@ local cv_kd_enabled_npc = CreateConVar(cvPrefix .. "enablenpc", 1, cvTags, "对N
 local cv_kd_playdead_enabled = CreateConVar(cvPrefix .. "playdead_enabled", 1, cvTags, "激活假死", 0, 1)
 local cv_kd_playdead_enabled_ply = CreateConVar(cvPrefix .. "playdead_enableply", 1, cvTags, "对玩家启用假死", 0, 1)
 local cv_kd_playdead_enabled_npc = CreateConVar(cvPrefix .. "playdead_enablenpc", 1, cvTags, "对NPC启用假死", 0, 1)
+local cv_kd_playdead_chance_constant = CreateConVar(cvPrefix .. "playdead_chance_constant", 0, cvTags, "假死几率无视血量限制(但几率大小仍受制于伤害)", 0, 1)
+local cv_kd_playdead_chance_min = CreateConVar(cvPrefix .. "playdead_chance_min", 0.25, cvTags, "伤害最小时的假死几率", 0, 1)
+local cv_kd_playdead_chance_max = CreateConVar(cvPrefix .. "playdead_chance_max", 0.95, cvTags, "伤害最大时的假死几率", 0, 1)
+local cv_kd_playdead_chance_mindmg = CreateConVar(cvPrefix .. "playdead_chance_mindamage", 25, cvTags, "假死几率最小时的伤害", 0)
+local cv_kd_playdead_chance_maxdmg = CreateConVar(cvPrefix .. "playdead_chance_maxdamage", 75, cvTags, "假死几率最大时的伤害", 0)
+local cv_kd_playdead_chance_usepercent = CreateConVar(cvPrefix .. "playdead_chance_usepercent", 0, cvTags, "将伤害量改为伤害所占生命百分比", 0, 1)
+local cv_kd_playdead_chance_mindmgpercent = CreateConVar(cvPrefix .. "playdead_chance_mindamagepercent", 0.45, cvTags, "假死几率最小时的伤害占生命值百分比", 0, 1)
+local cv_kd_playdead_chance_maxdmgpercent = CreateConVar(cvPrefix .. "playdead_chance_maxdamagepercent", 0.8, cvTags, "假死几率最大时的伤害占生命值百分比", 0, 1)
+local cv_kd_playdead_npc_soundemitchance = CreateConVar(cvPrefix .. "playdead_npc_soundemitchance", 0.1, cvTags, "假死NPC在通常情况下挨打发出受伤声音的几率", 0, 1)
+local cv_kd_playdead_npc_usehook_senddeathnotice = CreateConVar(cvPrefix .. "playdead_npc_usehook_senddeathnotice", 1, cvTags, "在NPC假死时调用SendDeathNotice", 0, 1)
 
 local cv_kd_knockdown_plyinveh = CreateConVar(cvPrefix .. "knockdown_playerinvehicle", 1, cvTags, "是否击倒在载具内的玩家(如果玩家在车里则试图让他们离开载具, 如果他们能)", 0, 1)
 
@@ -60,11 +78,10 @@ CreateConVar(cvPrefix .. "rag_minmasslimit", 1, cvTags, "设置布娃娃特定�
 -- FINISHME
 CreateConVar(cvPrefix .. "npc_usehook_createentityragdoll", 0, cvTags, "在NPC被击倒时调用CreateEntityRagdoll", 0, 1)
 CreateConVar(cvPrefix .. "playdead_npc_usehook_createentityragdoll", 1, cvTags, "在NPC假死时调用CreateEntityRagdoll", 0, 1)
-CreateConVar(cvPrefix .. "playdead_npc_usehook_onnpckilled", 1, cvTags, "在NPC假死时调用OnNPCKilled", 0, 1)
 CreateConVar(cvPrefix .. "playdead_npc_allydist", 500, cvTags, "假死NPC寻找\"友军\"的距离", 0)
 CreateConVar(cvPrefix .. "playdead_npc_allyamnt", 3, cvTags, "假死NPC脱离假死需要\"友军\"的数量", 0)
-CreateConVar(cvPrefix .. "playdead_npc_deployattack_timer", 15, cvTags, "假死NPC多长时间不被注视后才脱离假死", 0)
-CreateConVar(cvPrefix .. "playdead_npc_soundemitchance", 0.1, cvTags, "假死NPC在通常情况下挨打发出受伤声音的几率", 0, 1)
+CreateConVar(cvPrefix .. "playdead_npc_deployattack_timer", 15, cvTags, "假死NPC多长时间找不到敌人后才脱离假死", 0)
+CreateConVar(cvPrefix .. "playdead_npc_notarget", 1, cvTags, "假死NPC是否会被其它NPC无视, 这是一个RKD的遗留指令", 0, 1)
 
 CreateConVar(cvPrefix .. "statcalc_npc_staminadmgmul", 1, cvTags, "[对NPC] 体力伤害乘数", 0)
 CreateConVar(cvPrefix .. "statcalc_npc_conscdmgmul", 1, cvTags, "[对NPC] 意识伤害乘数", 0)
@@ -1189,11 +1206,56 @@ if SERVER then
 
     end]]
 
-    local function canPlayDead(ply)
+    local function canPlayDead(ply, di)
+        if not IsValid(ply) or not cv_kd_playdead_enabled:GetBool() then return false end
 
+        if not ply:IsPlayer() and cv_kd_playdead_enabled_npc:GetBool() 
+        or ply:IsPlayer() and cv_kd_playdead_enabled_ply:GetBool() then
+            local dmg = di:GetDamage()
+            
+            local mindmg, maxdmg = cv_kd_playdead_chance_mindmg:GetFloat(), cv_kd_playdead_chance_maxdmg:GetFloat()
+            
+            if cv_kd_playdead_chance_usepercent:GetBool() then
+                mindmg, maxdmg = cv_kd_playdead_chance_mindmgpercent:GetFloat(), cv_kd_playdead_chance_maxdmgpercent:GetFloat()
+                dmg = dmg / ply:GetMaxHealth()
+            end
+
+            if not cv_kd_playdead_chance_constant:GetBool() and dmg < mindmg then return false end
+
+            local percent = math.Clamp(math.Clamp(dmg, mindmg, maxdmg) / (maxdmg - mindmg), cv_kd_playdead_chance_min:GetFloat(), cv_kd_playdead_chance_max:GetFloat())
+            
+            print(1)
+            return math.Rand(0, 1) <= percent
+        end
+
+        return false
+    end
+    local function doPlayDead(ent, ctrl, di)
+        if cv_kd_playdead_npc_usehook_senddeathnotice:GetBool() then
+            local atk, inf
+            if di and not isvector(di) then
+                atk = di:GetAttacker()
+                inf = di:GetInflictor()
+                if not IsValid(inf) then inf = atk end
+            end
+
+            local fl = 0
+            if ent:IsNPC() and ent:Disposition(atk) == D_LI then
+                fl = 1
+            elseif atk:IsNPC() and atk:Disposition(ent) == D_LI then
+                fl = 2
+            end
+            hook.Run("SendDeathNotice", atk, IsValid(inf) and inf:GetClass() or "", hook.Run("GetDeathNoticeEntityName", ent), fl)
+        end
+
+        ctrl.EmittingSound = true
+        ent:SetSchedule(SCHED_DIE_RAGDOLL)
+        ctrl.EmittingSound = false
+
+        ctrl.PlayingDead = true
     end
 
-    local function doKnockdown(ply, vec, bone)
+    local function doKnockdown(ply, vec, bone, playdead)
         if not cv_kd_enabled:GetBool() then return end
         
         if not entTypeCheck(ply) then return end
@@ -1201,15 +1263,11 @@ if SERVER then
 
         local oldCtrl = getController(ply)
         if IsValid(oldCtrl) then
+            if playdead and not oldCtrl.LastStand then
+                oldCtrl.LastStand = true
+                doPlayDead(ply, oldCtrl, vec)
+            end
             oldCtrl:CancelGetUp()
-            --[[for _, data in pairs(oldCtrl.RagPObjs) do
-                if not data.physBone then continue end
-                local pObj = data.pObj
-                if data.MotionDisabledByGetUp then
-                    data.MotionDisabledByGetUp = nil
-                    pObj:EnableMotion(true)
-                end
-            end]]
 
             if ply:IsNPC() then
                 oldCtrl:SetCachedVar("NPC_CanGetUpVar", false, math.Rand(3, 7))
@@ -1226,6 +1284,10 @@ if SERVER then
         if not IsValid(oldCtrl) then
             ctrl:SetOwner(ply)
             ctrl:SetPos(ply:GetPos())
+            if playdead then
+                ctrl.LastStand = true
+                doPlayDead(ply, ctrl, vec)
+            end
             ctrl:Spawn()
             ctrl.PreventPhysAttackTill = CurTime() + 0.05
             -- 防误触
@@ -1379,7 +1441,7 @@ if SERVER then
 
     local function doKnockdownDetection(ent, di, take)
 
-        if not cv_kd_enabled:GetBool() then return end
+        if not cv_kd_enabled:GetBool() or not cv_kd_knockdown_defaultbehaviour:GetBool() then return end
 
         --print(take)
         --print(take)
@@ -1395,21 +1457,17 @@ if SERVER then
         if hp <= 0 then return end
 
         if di then
-            local dmg = di:GetDamage()
             local result, should = runThatHook("Savee_AdvRagKnockdown_ShouldKnockdown", ent, di, take)
             if result and not should then return end
 
-            if dmg <= cv_kd_knockdown_mindamage:GetFloat() and di:GetDamageForce():Length() < cv_kd_knockdown_mindamageforce:GetFloat() then return end
+            local dmg = di:GetDamage()
+
+            if not (cv_kd_knockdown_percentdamage_enabled:GetBool() and dmg / ent:GetMaxHealth() > cv_kd_knockdown_percentdamage:GetFloat()) 
+            and (dmg <= cv_kd_knockdown_mindamage:GetFloat() and di:GetDamageForce():Length() < cv_kd_knockdown_mindamageforce:GetFloat()) then return end
         end
             --print(ent:Health())
         --if dmg >= ent:Health() or ent:Health() <= 0 then return end
         --print("我要被踹翻了Help: ", ent, di)
-
-        local ctrl = getController(ent)
-        if IsValid(ctrl) then
-            ctrl:CancelGetUp()
-            return
-        end
     
         --if not ent:LookupBone("ValveBiped.Bip01_L_Hand") or not ent:LookupBone("ValveBiped.Bip01_R_Hand") then return end 
         --if not then return end
@@ -1430,7 +1488,7 @@ if SERVER then
 
         --do return end
 
-        doKnockdown(ent, di)
+        doKnockdown(ent, di, nil, canPlayDead(ent, di))
         return true
     end
     
@@ -1765,9 +1823,10 @@ if SERVER then
     hook.Add("EntityEmitSound", "Savee_AdvRagKnockdown_Unconsciousness", function(data)
         local ent = data.Entity
         local ctrl = getController(ent)
-        if not IsValid(ctrl) then return end
-
-        if ctrl.NPCState_Unconsciousness then return false end
+        if not IsValid(ctrl) or ctrl.EmittingSound then return end
+        if ctrl.NPCState_Unconsciousness 
+        or ctrl.PlayDead and math.Rand(0, 1) > cv_kd_playdead_npc_soundemitchance:GetFloat() 
+        then return false end
     end)
     
     hook.Add("PostCleanupMap", "Savee_AdvRagKnockdown_ResetRagdoll", function()
@@ -1911,7 +1970,7 @@ if SERVER then
 
     
     -- 加个优先级
-    hook.Add("StartCommand", "!Savee_AdvRagKnockdown_RagView", function(ply, cmd)
+    lowpriohook.Add("StartCommand", "Savee_AdvRagKnockdown_RagView", function(ply, cmd)
         ---@type Entity
         local ctrl = ply.Savee_AdvRagKnockdown_Controller
         handlingKnockdownedCmd = IsValid(ctrl)
@@ -2068,7 +2127,7 @@ else
         --print(deadRag:GetPhysicsObjectNum(1))
     end)
 
-    hook.Add("InputMouseApply", "Savee_AdvRagKnockdown_ViewControl", function(cmd, x, y)
+    lowpriohook.Add("InputMouseApply", "Savee_AdvRagKnockdown_ViewControl", function(cmd, x, y)
         --print(cmd:GetMouseY(), y)
         local ctrl = getController(LocalPlayer())
         if not IsValid(ctrl) or (x == 0 and y == 0) then return end
@@ -2098,7 +2157,7 @@ else
     end)
 
     local last_stored_roll = 0
-    hook.Add("StartCommand", "!Savee_AdvRagKnockdown_RagOperation", function(ply, cmd)
+    lowpriohook.Add("StartCommand", "Savee_AdvRagKnockdown_RagOperation", function(ply, cmd)
         ---@type Entity
         local ctrl = getController(ply)
         handlingKnockdownedCmd = IsValid(ctrl)
@@ -2164,7 +2223,6 @@ else
             cmd:RemoveKey(IN_RELOAD)
         end
 
-    
     end)
 
     local function returnCheck(self)
@@ -2190,15 +2248,17 @@ else
         local result = self:CalcView(ply, pos, ang, fov)
 
         if not result then return end
+        pos, ang = result.origin, result.angles
 
         calcview_last_stored = ct
-        calcview_last_pos = result.origin
-        calcview_last_ang = result.angles
-        local newResult = hook.Run("CalcView", ply, result.origin, result.angles, fov, znear, zfar, true)
+        calcview_last_pos = pos
+        calcview_last_ang = ang
+        local newResult = hook.Run("CalcView", ply, pos, ang, fov, znear, zfar, true)
         if istable(newResult) then
             newResult.drawviewer = result.drawviewer
             result = newResult
         end
+
         --result.znear = math.min(result.znear, 1)
         return result
 
@@ -2389,6 +2449,12 @@ else
 end
 
 Savee_AdvRagKnockdown_GetController = getController
+
+-- 傻逼
+if debugging:GetBool() and isSP then
+    Entity(1):ConCommand("lua_refresh_file autorun/zsavee_advragknockdown_lowpriorityhooks.lua")
+end
+
 --[[local f = file.Open("models/savee/ocs/savee39672/nellie.phy", "r", "GAME")
 f:Write("FUCKYOU")
 f:Close()]]
