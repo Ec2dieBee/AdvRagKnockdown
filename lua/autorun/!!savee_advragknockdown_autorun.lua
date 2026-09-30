@@ -1209,8 +1209,8 @@ if SERVER then
     local function canPlayDead(ply, di)
         if not IsValid(ply) or not cv_kd_playdead_enabled:GetBool() then return false end
 
-        if not ply:IsPlayer() and cv_kd_playdead_enabled_npc:GetBool() 
-        or ply:IsPlayer() and cv_kd_playdead_enabled_ply:GetBool() then
+        if di and (not ply:IsPlayer() and cv_kd_playdead_enabled_npc:GetBool() 
+        or ply:IsPlayer() and cv_kd_playdead_enabled_ply:GetBool()) then
             local dmg = di:GetDamage()
             
             local mindmg, maxdmg = cv_kd_playdead_chance_mindmg:GetFloat(), cv_kd_playdead_chance_maxdmg:GetFloat()
@@ -1223,13 +1223,13 @@ if SERVER then
             if not cv_kd_playdead_chance_constant:GetBool() and dmg < mindmg then return false end
 
             local percent = math.Clamp(math.Clamp(dmg, mindmg, maxdmg) / (maxdmg - mindmg), cv_kd_playdead_chance_min:GetFloat(), cv_kd_playdead_chance_max:GetFloat())
-            
-            print(1)
             return math.Rand(0, 1) <= percent
         end
 
         return false
     end
+
+    ---@param ent NPC
     local function doPlayDead(ent, ctrl, di)
         if cv_kd_playdead_npc_usehook_senddeathnotice:GetBool() then
             local atk, inf
@@ -1247,6 +1247,14 @@ if SERVER then
             end
             hook.Run("SendDeathNotice", atk, IsValid(inf) and inf:GetClass() or "", hook.Run("GetDeathNoticeEntityName", ent), fl)
         end
+
+        
+        ent:ClearSchedule()
+        ent:ClearGoal()
+        ent:TaskComplete()
+        ent:SetIdealActivity(ACT_IDLE)
+        ent:SetActivity(ACT_IDLE)
+        ent:StopMoving(true)
 
         ctrl.EmittingSound = true
         ent:SetSchedule(SCHED_DIE_RAGDOLL)

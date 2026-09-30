@@ -1671,7 +1671,7 @@ function ENT:Think()
 
         end
 
-        if consc < 45 then
+        if consc < 45 or self.PlayingDead then
             own:NextThink(ct + 0.15)
 
             if not self.NPCState_Unconsciousness and not own:HasCondition(COND.NPC_FREEZE) then
@@ -2019,6 +2019,7 @@ function ENT:PlayDeadThink(own, ct)
 	end
 
     for _, ent in ipairs(ents.FindInSphere(self:GetPos(), getCV("playdead_npc_allydist", "Int"))) do
+        --if ent:IsNPC() then print(own:Disposition(ent), D_LI) end
         if not IsValid(ent) or ent == own or (ent:IsPlayer() and GetConVar("ai_ignoreplayers"):GetBool()) or own:Disposition(ent) ~= D_LI then continue end
         
         local ctrl = getController(ent)
@@ -2026,8 +2027,8 @@ function ENT:PlayDeadThink(own, ct)
 
         allies = allies + 1
     end
-
-    self.PlayingDead = allies <= getCV("playdead_npc_allyamnt", "Int") or not enemyInSight
+    --print(allies, getCV("playdead_npc_allyamnt", "Int"))
+    self.PlayingDead = allies < getCV("playdead_npc_allyamnt", "Int") and enemyInSight
 
 end
 
@@ -2826,6 +2827,7 @@ function ENT:Tick()
 
     ---@type Entity
     local own = self:GetOwner()
+    local isPly = own:IsPlayer()
     ---@type Entity
     local rag = self:GetRagdoll()
     local mdlScale = rag.Savee_AdvRagKnockdown_ModelScale
@@ -2837,9 +2839,22 @@ function ENT:Tick()
         own:AddEffects(EF_BONEMERGE)
     end
 
-    --own:SetIdealActivity(ACT_RANGE_ATTACK1)
+    local aea = self:GetAimEyeAngles()
 
-    if self.PlayingDead then return end
+    local eyeatt = rag:LookupAttachment("eyes")
+    local eyepos = own:EyePos()
+    local eyeang = own:EyeAngles()
+    if eyeatt ~= 0 then
+        eyepos = rag:GetAttachment(eyeatt).Pos
+        eyeang = rag:GetAttachment(eyeatt).Ang        
+    end
+
+    if not isPly then
+        eyepos = eyepos - (own:GetInternalVariable("m_HackedGunPos") or vector_origin)
+    end
+    own:SetPos(eyepos + (aea:Forward() * (isPly and 8 or 10)) * math.max(1, mdlScale), true)
+
+    --own:SetIdealActivity(ACT_RANGE_ATTACK1)
 
     local pObjs = self.RagPObjs
 
@@ -2851,7 +2866,7 @@ function ENT:Tick()
     local noArm = true --noAimHTs[wepHT]
     local isMeleeHT
     local wepHT
-    local isPly = own:IsPlayer()
+    
 
     local aimingWeapon = consc >= 35 and (not isPly and (own:GetActivity() ~= ACT_IDLE or IsValid(own:GetEnemy())) or self:GetAimingWeapon())
     local caches = self.Caches
@@ -2868,21 +2883,8 @@ function ENT:Tick()
     end
 
     if consc < noArmVal then noArm = true end
-
-    local aea = self:GetAimEyeAngles()
-
-    local eyeatt = rag:LookupAttachment("eyes")
-    local eyepos = own:EyePos()
-    local eyeang = own:EyeAngles()
-    if eyeatt ~= 0 then
-        eyepos = rag:GetAttachment(eyeatt).Pos
-        eyeang = rag:GetAttachment(eyeatt).Ang        
-    end
-
-    if not isPly then
-        eyepos = eyepos - (own:GetInternalVariable("m_HackedGunPos") or vector_origin)
-    end
-    own:SetPos(eyepos + (aea:Forward() * (isPly and 8 or 10)) * math.max(1, mdlScale), true)
+    
+    if self.PlayingDead then return end
 
     local in_forward = not isPly and caches.NPC_HasMoveGoal or self:HasKeyInput(IN_FORWARD)
     local in_back = self:HasKeyInput(IN_BACK)
