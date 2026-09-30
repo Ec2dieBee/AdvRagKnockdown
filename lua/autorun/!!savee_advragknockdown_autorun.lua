@@ -14,6 +14,7 @@
 -- 
 -- 2026/8/7: 观前提醒: 本插件完全抄袭了RagKnockdown, 就连名字也一样
 
+-- 感谢RNil的指导(和泌阳的hook.lua让我知道了文件名优先级越先被加载hook越先被加载)
 
 AddCSLuaFile()
 
@@ -22,7 +23,7 @@ local cvPrefix = "savee_advragknockdown_"
 local cvTags = {FCVAR_ARCHIVE,FCVAR_REPLICATED}
 
 -- 证明我抄袭了RagKnockdown的有力证据 7.25: 现在没有了 8.7: 你要不看看上面呢
-local cv_kd_enabled = CreateConVar(cvPrefix .. "enabled", 1, cvTags, "激活整个插件 *警告! 哪怕这个插件被禁用 某些hook的运算也是会照常运行的!*", 0, 1)
+local cv_kd_enabled = CreateConVar(cvPrefix .. "enabled", 1, cvTags, "激活整个插件 *警告! 哪怕这个插件被禁用 某些hook的运算会照常运行!*", 0, 1)
 local cv_kd_enabled_ply = CreateConVar(cvPrefix .. "enableply", 1, cvTags, "对玩家启用击倒", 0, 1)
 local cv_kd_enabled_npc = CreateConVar(cvPrefix .. "enablenpc", 1, cvTags, "对NPC启用击倒", 0, 1)
 --local cv_kd_enabled_nextbot = CreateConVar(cvPrefix .. "enablenextbot", 1, cvTags, "对NextBot启用击倒", 0, 1)
@@ -37,7 +38,7 @@ local cv_kd_knockdown_defaultbehaviour = CreateConVar(cvPrefix .. "knockdown_def
 local cv_kd_knockdown_percentdamage_enabled = CreateConVar(cvPrefix .. "knockdown_percentdamage_enabled", 1, cvTags, "允许在伤害大于玩家最大生命百分比时击倒玩家", 0, 1)
 local cv_kd_knockdown_percentdamage = CreateConVar(cvPrefix .. "knockdown_percentdamage", 0.5, cvTags, "击倒玩家所需的伤害百分比, 请注意 如果其它条件满足也是可以击倒的", 0, 1)
 local cv_kd_knockdown_mindamage = CreateConVar(cvPrefix .. "knockdown_mindamage", 10, cvTags, "击倒玩家最小所需的伤害, 请注意 如果力度足够也是可以击倒的", 0)
-local cv_kd_knockdown_mindamageforce = CreateConVar(cvPrefix .. "knockdown_mindamageforce", 2500, cvTags, "击倒玩家最小所需的伤害力度, 请注意 如果伤害足够也是可以击倒的", 0)
+local cv_kd_knockdown_mindamageforce = CreateConVar(cvPrefix .. "knockdown_mindamageforce", 3500, cvTags, "击倒玩家最小所需的伤害力度, 请注意 如果伤害足够也是可以击倒的", 0)
 local cv_kd_knockdown_physgun = CreateConVar(cvPrefix .. "knockdown_physicsgun", 0, cvTags, "允许使用物理枪捡起可击倒实体", 0, 1)
 local cv_kd_knockdown_gravgun = CreateConVar(cvPrefix .. "knockdown_gravitygun", 0, cvTags, "允许使用重力枪推倒实体", 0, 1)
 
@@ -56,7 +57,7 @@ local cv_kd_perf_luacode_deltamul = CreateConVar(cvPrefix .. "performance_luacod
 
 CreateConVar(cvPrefix .. "rag_minmasslimit", 1, cvTags, "设置布娃娃特定部位的最小重量, 并降低布娃娃其它部位的重量. 对于物理部件特多的布娃娃可能会有Bug, 关掉这个会导致特定模型伸手可以飞天", 0, 1)
 
-
+-- FINISHME
 CreateConVar(cvPrefix .. "npc_usehook_createentityragdoll", 0, cvTags, "在NPC被击倒时调用CreateEntityRagdoll", 0, 1)
 CreateConVar(cvPrefix .. "playdead_npc_usehook_createentityragdoll", 1, cvTags, "在NPC假死时调用CreateEntityRagdoll", 0, 1)
 CreateConVar(cvPrefix .. "playdead_npc_usehook_onnpckilled", 1, cvTags, "在NPC假死时调用OnNPCKilled", 0, 1)
@@ -893,9 +894,10 @@ hook.Add("EntityFireBullets", "Savee_AdvRagKnockdown_HitScanMod", function(ent, 
     if ent:IsWeapon() then ent = ent:GetOwner() end
     
     if SERVER then
-        local newbullet = table.Copy(bullet)
-        hook.Run("EntityFireBullets", ent, newbullet, true)
-        local cb = newbullet.Callback or bullet.Callback
+        local result = hook.Run("EntityFireBullets", ent, bullet, true)
+        if not result and isbool(result) then return false end
+
+        local cb = bullet.Callback
         bullet.Callback = function(attacker, btr, di)
             --BTR!???????
 
@@ -1784,7 +1786,7 @@ if SERVER then
     
     end)
 
-    hook.Add("OnNPCKilled", "!!Savee_AdvRagKnockdown_SetNPCPos", function(npc)
+    hook.Add("OnNPCKilled", "Savee_AdvRagKnockdown_SetNPCPos", function(npc)
         local ctrl = getController(npc)
         if not IsValid(ctrl) or not ctrl.Initialized then return end
 
@@ -1873,7 +1875,7 @@ if SERVER then
     end)
 
     -- 你知道吗我又加了两个感叹号
-    hook.Add("EntityTakeDamage", "!!!!!Savee_AdvRagKnockdown_OwnerCorrection", function(rag, di)
+    hook.Add("EntityTakeDamage", "Savee_AdvRagKnockdown_OwnerCorrection", function(rag, di)
 
         local atk = di:GetAttacker()
 
@@ -2174,7 +2176,8 @@ else
     local calcview_last_stored = -1
     local calcview_last_pos = vector_origin
     local calcview_last_ang = angle_zero
-    hook.Add("CalcView", "zzzSavee_AdvRagKnockdown_CTRLHook", function(ply, pos, ang, fov)
+    hook.Add("CalcView", "Savee_AdvRagKnockdown_CTRLHook", function(ply, pos, ang, fov, znear, zfar, fucked)
+        if fucked then return end
         local self = getController(ply)
         local ct = CurTime()
 
@@ -2182,10 +2185,7 @@ else
             local calcview_transtime = cvVars.cl_getup_smoothtransitioninterval
             local lerp = (ct - calcview_last_stored) / calcview_transtime
 
-            return calcview_last_stored + calcview_transtime >= ct and {
-                origin = LerpVector(lerp, calcview_last_pos, pos),
-                angles = LerpAngle(lerp, calcview_last_ang, ang),
-            } or nil
+            return calcview_last_stored + calcview_transtime >= ct and hook.Run("CalcView", ply, LerpVector(lerp, calcview_last_pos, pos), LerpAngle(lerp, calcview_last_ang, ang), fov, znear, zfar, true) or nil
         end
         local result = self:CalcView(ply, pos, ang, fov)
 
@@ -2194,6 +2194,12 @@ else
         calcview_last_stored = ct
         calcview_last_pos = result.origin
         calcview_last_ang = result.angles
+        local newResult = hook.Run("CalcView", ply, result.origin, result.angles, fov, znear, zfar, true)
+        if istable(newResult) then
+            newResult.drawviewer = result.drawviewer
+            result = newResult
+        end
+        --result.znear = math.min(result.znear, 1)
         return result
 
     end)
@@ -2455,3 +2461,4 @@ hook列表
         },
 
 ]]
+

@@ -234,6 +234,14 @@ local doOriginalHTs = {
     ["slam"] = true,
     ["normal"] = true,
 }
+local twoHandsHTs = {
+    ["smg"] = true,
+    ["ar2"] = true,
+    ["shotgun"] = true,
+    ["rpg"] = true,
+    ["physgun"] = true,
+    ["crossbow"] = true,
+}
 local noAimHTs = {
     [""] = true,
     ["normal"] = true,
@@ -274,17 +282,6 @@ local actIndex = {
 	["camera"]		= ACT_HL2MP_IDLE_CAMERA,
 	["magic"]		= ACT_HL2MP_IDLE_MAGIC,
 	["revolver"]	= ACT_HL2MP_IDLE_REVOLVER
-}
-
-local noCollides = {
-    "ValveBiped.Bip01_L_Hand",
-    "ValveBiped.Bip01_L_Forearm",
-    "ValveBiped.Bip01_L_Thigh",
-    "ValveBiped.Bip01_L_Calf",
-    "ValveBiped.Bip01_R_Hand",
-    "ValveBiped.Bip01_R_Forearm",
-    "ValveBiped.Bip01_R_Thigh",
-    "ValveBiped.Bip01_R_Calf",
 }
 
 local hitgroup_limbs = {0.2, 0.1}
@@ -576,7 +573,6 @@ ENT.NextBroadcastNWEntity = -1
 
 ENT.PreventPhysAttackTill = -1
 ENT.NextCalcAnim = -1
-ENT.NextCache = -1
 ENT.NextRegenStamina = -1
 ENT.NextRegenConsciousness = -1
 ENT.NextSetLArmDelta = -1
@@ -588,15 +584,12 @@ ENT.NextGetUp = -1
 
 --ENT.CustomOwnerRenderOverride = nil
 
-ENT.RagPhysDmgTakenCount = 0
-
 ENT.Removing = false
 
 ENT.ShadowCtrlData = {}
-ENT.CacheTimers = {}
 ENT.DI_MarkedAsTaken = {}
-ENT.DI_GoingToTake = {}
 
+ENT.CacheTimers = {}
 ENT.Caches = {
     NPC_MoveGoal = Vector(),
     NPC_HasMoveGoal = Vector(),
@@ -637,8 +630,6 @@ ENT.RHand_Grabbing_Broken = false
 ENT.RHand_Grabbing = false
 ENT.RHand_NextGrab = -1
 ENT.RHand_GrabbingData = {}
-
-ENT.ReplacedConsts = {}
 
 ENT.KeyInputs = {}
 -- 用以解决30个插件不间断强奸EyePos造成的卡顿
@@ -950,6 +941,9 @@ function ENT:Initialize()
 
     rag:SetNW2Entity("Savee_AdvRagKnockdown_Controller", self)
 
+    self:StartMotionController()
+    self:AddToMotionController(rag:GetPhysicsObject())
+
     -- noob gore mod 2支持
     rag.destructible_Corpse = false
     --own.destructible_Corpse = false
@@ -999,6 +993,8 @@ function ENT:Initialize()
             pObj = pObj,
             physBone = true,
         }
+        
+        --self:AddToMotionController(pObj)
         --print(rag:GetBoneName(rag:TranslatePhysBoneToBone(i)), pObj:GetMass())
     end
 
@@ -1401,12 +1397,10 @@ function ENT:OnRemove()
     if self.Removing then return end
 
     self.Removing = true
+    if CLIENT then return end
     local rag = self:GetRagdoll()
     local own = self:GetOwner()
 
-    if CLIENT then 
-        return
-    end
 
     --print(rag)
     if IsValid(own) then
@@ -1572,8 +1566,8 @@ function ENT:Think()
     end
     local pObjs = self.RagPObjs
 
+    
     local isPly = own:IsPlayer()
-
     local wep = own:GetActiveWeapon()
     
     if IsValid(wep) then
@@ -1972,8 +1966,6 @@ function ENT:Think()
         rag:SetNW2Entity("Savee_AdvRagKnockdown_Controller", self)
     end
 
-    self.RagPhysDmgTakenCount = math.max(0, self.RagPhysDmgTakenCount - 3)
-
     -- 杂
 
     if isPly then
@@ -2023,14 +2015,14 @@ local legDelta = 35
 
 local deltamul = getCV("performance_luacode_deltamul", "Float")
 
-local torsoang, torsoangdamp, torsospd, torsospddamp, torsodampfactor, torsodelta = 250, 150, 0, 0, 1, isSP and 0.07 or 0.1
+local torsoang, torsoangdamp, torsospd, torsospddamp, torsodampfactor, torsodelta = 125, 65, 0, 0, 1, isSP and 0.07 or 0.1
 --local torsomovespd, torsomovespddamp, torsomovespddelta = 450, 450, 0.2
-local headang, headangdamp, headspd, headspddamp, headdampfactor, headdelta = 100, 200, 0, 0, 1, 0.07
-local handang, handangdamp, handspd, handspddamp, handdampfactor, handdelta = 350, 250, 0, 0, 0.8, 0.08
-local handaimang, handaimangdamp, handaimspd, handaimspddamp, handaimdampfactor, handaimdelta = 450, 350, 0, 0, 0.8, isSP and 0.05 or 0.08
-local armaimang, armaimangdamp, armaimspd, armaimspddamp, armaimdampfactor, armaimdelta = 550, 650, 0, 0, 0.8, 0.1
+local headang, headangdamp, headspd, headspddamp, headdampfactor, headdelta = 30, 30, 0, 0, 1, 0.1
+local handang, handangdamp, handspd, handspddamp, handdampfactor, handdelta = 350, 250, 20, 0, 0.8, 0.08
+local handaimang, handaimangdamp, handaimspd, handaimspddamp, handaimdampfactor, handaimdelta = 225, 135, 0, 0, 0.8, isSP and 0.05 or 0.08
+local armaimang, armaimangdamp, armaimspd, armaimspddamp, armaimdampfactor, armaimdelta = 175, 250, 0, 0, 0.8, 0.15
 local pelvisang, pelvisangdamp, pelvisspd, pelvisspddamp, pelvisdampfactor, pelvisdelta = 0, 10, 0, 0, 0.8, 0.15
-local legang, legangdamp, legspd, legspddamp, legsdampfactor, legsdelta = 25, 15, 0, 0, 0.5, 0.2
+local legang, legangdamp, legspd, legspddamp, legsdampfactor, legsdelta = 5, 5, 0, 0, 0.5, 0.2
 
 torsodelta = torsodelta * deltamul
 headdelta = headdelta * deltamul
@@ -2760,6 +2752,10 @@ function ENT:DealWithAnims(isPly, aimingWeapon, noArm, wepHT, isMeleeHT)
         elseif self.LowPose then --IsValid(wep) and wep.ARC9 and wep:GetBipod() then
             ang:RotateAroundAxis(Vector(0, -1, 0), -55)
         end
+        
+        if wepHT and twoHandsHTs[wepHT] then
+            ang:RotateAroundAxis(ang:Forward(), -45)
+        end
 
     end
 
@@ -2795,7 +2791,6 @@ function ENT:Tick()
 
     --own:SetIdealActivity(ACT_RANGE_ATTACK1)
 
-    local shadowCtrls = table.Copy(self.ShadowCtrlData)
     local pObjs = self.RagPObjs
 
     local stamina, consc = self:GetStamina(), self:GetConsciousness()
@@ -2807,7 +2802,6 @@ function ENT:Tick()
     local isMeleeHT
     local wepHT
     local isPly = own:IsPlayer()
-
 
     local aimingWeapon = consc >= 35 and (not isPly and (own:GetActivity() ~= ACT_IDLE or IsValid(own:GetEnemy())) or self:GetAimingWeapon())
     local caches = self.Caches
@@ -2842,85 +2836,6 @@ function ENT:Tick()
 
     local in_forward = not isPly and caches.NPC_HasMoveGoal or self:HasKeyInput(IN_FORWARD)
     local in_back = self:HasKeyInput(IN_BACK)
-
-    local numpObjs = rag:GetPhysicsObjectCount()
-    -- Breen.mdl
-    local extrapObjs = numpObjs - 15
-
-    -- 起身
-    if self.GettingUp then
-
-        local lfoot, rfoot = pObjs["ValveBiped.Bip01_L_Foot"] and pObjs["ValveBiped.Bip01_L_Foot"].pObj, pObjs["ValveBiped.Bip01_R_Foot"] and pObjs["ValveBiped.Bip01_R_Foot"].pObj
-
-        local lFootOnGround = lfoot and util.TraceLine({start = lfoot:GetPos(), endpos = lfoot:GetPos() - Vector(0, 0, 10 * mdlScale), filter = {own, rag}})
-        lFootOnGround = lfoot and (lFootOnGround.Hit or lFootOnGround.HitWorld)
-        local rFootOnGround = rfoot and util.TraceLine({start = rfoot:GetPos(), endpos = rfoot:GetPos() - Vector(0, 0, 10 * mdlScale), filter = {own, rag}})
-        rFootOnGround = rfoot and (rFootOnGround.Hit or rFootOnGround.HitWorld)
-
-        --print(lFootOnGround)
-        local absVel = util.QuickTrace(self.GetupAnimModel:GetPos(), Vector(0, 0, -10 * mdlScale), rag)
-        absVel = (IsValid(absVel.Entity) and absVel.Entity:GetVelocity() or vector_origin) - rag:GetVelocity()
-
-        local absVelLen = absVel:Length()
-
-        local getupForceMul = 0.1
-        if lFootOnGround then getupForceMul = getupForceMul + 0.65 end
-        if rFootOnGround then getupForceMul = getupForceMul + 0.65 end
-
-        getupForceMul = getupForceMul * Lerp((absVelLen - 200) / 100, 1, 0)
-
-        
-        local anim = self.GetupAnimModel
-        local target = self.GettingUp_SyncingToOwner and self or anim
-        --print(target)
-        for i = 0, target:GetBoneCount() - 1 do
-            local bName = target:GetBoneName(i)
-            if shadowCtrls[bName] or not pObjs[bName] or not pObjs[bName].physBone or not boneWhiteList[bName] then continue end
-
-            ---@type PhysObj
-            local pObj = pObjs[bName].pObj
-            local pos, ang = target:GetBonePosition(i)
-            --local mass = pObj:GetMass()
-            --print(bName, mass)
-
-            --[[if self.GettingUp_SyncingToOwner and pObj:IsMotionEnabled() then
-                pObjs[bName].MotionDisabledByGetUp = true
-                pObj:EnableMotion(false)
-            elseif not self.GettingUp_SyncingToOwner and pObjs[bName].MotionDisabledByGetUp then
-                pObj:EnableMotion(true)
-            end]]
-            local transition = Lerp(anim:GetCycle() / 0.2, 0.5, 1)
-
-            shadowCtrls[bName] = {
-                --secondstoarrive = 0.01,
-                pos = pos,
-                angle = ang,
-                maxspeed = 45 * getupForceMul * transition,
-                maxspeeddamp = 145 * getupForceMul * (self.GettingUp_SyncingToOwner and 3 or 1),
-                maxangular = 350 * getupForceMul * transition,
-                maxangulardamp = 1350,
-                dampfactor = Lerp((anim:GetCycle() - 0.3) / 0.4, 0.2, 0.8),
-                delta = self.GettingUp_SyncingToOwner and 0.05 or 0.1,
-                noCorrection = true,
-                addMass = true,
-            }
-
-        end
-
-        --[[local hull = (own:OBBMaxs() - own:OBBMins()) / 2
-        hull.z = 1
-
-        local tr = rag:WaterLevel() >= 1 and {HitPos = rag:GetPos()} or util.TraceHull({
-            start = rag:GetPos() + Vector(0, 0, 5), 
-            endpos = rag:GetPos() - Vector(0, 0, 64),
-            filter = {rag, own},
-            mins = -hull,
-            maxs = hull,
-        })
-        
-        anim:SetPos(LerpVector(0.2, anim:GetPos(), tr.HitPos))]]
-
-    end
 
     -- 主体控制
     -- 因为太几把占性能了所以挪走了
@@ -3103,7 +3018,7 @@ function ENT:Tick()
             if not IsValid(lWinch) then
                 local data = self.LHand_GrabbingData
                 -- Z-City的参数(给我的感觉), 和我进去爬的时候的手部位置几乎一致
-                lWinch = constraint.Elastic(rag, data.ent, pObjs["ValveBiped.Bip01_Spine2"].id, data.pObjID, (Vector(-6, 6, 1) - aea:Forward()), data.wtlPos, spd, 250, 1, "", 0, true, Color(255, 255, 255, 0))
+                lWinch = constraint.Elastic(rag, data.ent, pObjs["ValveBiped.Bip01_Spine2"].id, data.pObjID, (Vector(self.LowPose and -1 or -6, 6, 2) - aea:Forward()), data.wtlPos, spd, 250, 1, "", 0, true, Color(255, 255, 255, 0))
                 if lWinch then 
                     const:DeleteOnRemove(lWinch)
                 end
@@ -3156,7 +3071,7 @@ function ENT:Tick()
 
             if not IsValid(rWinch) then
                 local data = self.RHand_GrabbingData
-                rWinch = constraint.Elastic(rag, data.ent, pObjs["ValveBiped.Bip01_Spine2"].id, data.pObjID, (Vector(-6, 6, -1) - aea:Forward()), data.wtlPos, spd, 250, 1, "", 0, true, Color(255, 255, 255, 0))
+                rWinch = constraint.Elastic(rag, data.ent, pObjs["ValveBiped.Bip01_Spine2"].id, data.pObjID, (Vector(self.LowPose and -1 or -6, 6, -2) - aea:Forward()), data.wtlPos, spd, 250, 1, "", 0, true, Color(255, 255, 255, 0))
                 if rWinch then constR:DeleteOnRemove(rWinch) end
 
                 self.RHand_Grabbing_Winch = rWinch
@@ -3195,10 +3110,101 @@ function ENT:Tick()
         end
     end
 
+end
 
 
-    -- 应用最后的结果, 用Table方便改, 真的是太棒了
-    --self:SetStamina(0)
+-- 这是他妈的神迹!!!!!!!
+function ENT:PhysicsSimulate(_, delta)
+    local own = self:GetOwner()
+    local rag = self:GetRagdoll()
+    local aea = self:GetAimEyeAngles()
+
+    local isPly = own:IsPlayer()
+
+    local caches = self.Caches
+    local mdlScale = rag.Savee_AdvRagKnockdown_ModelScale
+    
+    local shadowCtrls = table.Copy(self.ShadowCtrlData)
+    local pObjs = self.RagPObjs
+
+    local numpObjs = rag:GetPhysicsObjectCount()
+    -- Breen.mdl
+    local extrapObjs = numpObjs - 15
+   
+    -- 起身
+    if self.GettingUp then
+
+        local lfoot, rfoot = pObjs["ValveBiped.Bip01_L_Foot"] and pObjs["ValveBiped.Bip01_L_Foot"].pObj, pObjs["ValveBiped.Bip01_R_Foot"] and pObjs["ValveBiped.Bip01_R_Foot"].pObj
+
+        local lFootOnGround = lfoot and util.TraceLine({start = lfoot:GetPos(), endpos = lfoot:GetPos() - Vector(0, 0, 10 * mdlScale), filter = {own, rag}})
+        lFootOnGround = lfoot and (lFootOnGround.Hit or lFootOnGround.HitWorld)
+        local rFootOnGround = rfoot and util.TraceLine({start = rfoot:GetPos(), endpos = rfoot:GetPos() - Vector(0, 0, 10 * mdlScale), filter = {own, rag}})
+        rFootOnGround = rfoot and (rFootOnGround.Hit or rFootOnGround.HitWorld)
+
+        --print(lFootOnGround)
+        local absVel = util.QuickTrace(self.GetupAnimModel:GetPos(), Vector(0, 0, -10 * mdlScale), rag)
+        absVel = (IsValid(absVel.Entity) and absVel.Entity:GetVelocity() or vector_origin) - rag:GetVelocity()
+
+        local absVelLen = absVel:Length()
+
+        local getupForceMul = 0.1
+        if lFootOnGround then getupForceMul = getupForceMul + 0.65 end
+        if rFootOnGround then getupForceMul = getupForceMul + 0.65 end
+
+        getupForceMul = getupForceMul * Lerp((absVelLen - 200) / 100, 1, 0)
+
+        
+        local anim = self.GetupAnimModel
+        local target = self.GettingUp_SyncingToOwner and self or anim
+        --print(target)
+        for i = 0, target:GetBoneCount() - 1 do
+            local bName = target:GetBoneName(i)
+            if shadowCtrls[bName] or not pObjs[bName] or not pObjs[bName].physBone or not boneWhiteList[bName] then continue end
+
+            ---@type PhysObj
+            --local pObj = pObjs[bName].pObj
+            local pos, ang = target:GetBonePosition(i)
+            --local mass = pObj:GetMass()
+            --print(bName, mass)
+
+            --[[if self.GettingUp_SyncingToOwner and pObj:IsMotionEnabled() then
+                pObjs[bName].MotionDisabledByGetUp = true
+                pObj:EnableMotion(false)
+            elseif not self.GettingUp_SyncingToOwner and pObjs[bName].MotionDisabledByGetUp then
+                pObj:EnableMotion(true)
+            end]]
+            local transition = Lerp(anim:GetCycle() / 0.2, 0.5, 1)
+
+            shadowCtrls[bName] = {
+                --secondstoarrive = 0.01,
+                pos = pos,
+                angle = ang,
+                maxspeed = 45 * getupForceMul * transition,
+                maxspeeddamp = 145 * getupForceMul * (self.GettingUp_SyncingToOwner and 3 or 1),
+                maxangular = 350 * getupForceMul * transition,
+                maxangulardamp = 1350,
+                dampfactor = Lerp((anim:GetCycle() - 0.3) / 0.4, 0.2, 0.8),
+                delta = self.GettingUp_SyncingToOwner and 0.05 or 0.1,
+                noCorrection = true,
+                addMass = true,
+            }
+
+        end
+
+        --[[local hull = (own:OBBMaxs() - own:OBBMins()) / 2
+        hull.z = 1
+
+        local tr = rag:WaterLevel() >= 1 and {HitPos = rag:GetPos()} or util.TraceHull({
+            start = rag:GetPos() + Vector(0, 0, 5), 
+            endpos = rag:GetPos() - Vector(0, 0, 64),
+            filter = {rag, own},
+            mins = -hull,
+            maxs = hull,
+        })
+        
+        anim:SetPos(LerpVector(0.2, anim:GetPos(), tr.HitPos))]]
+
+    end
 
     local forceMul = (1 + math.max(extrapObjs / 5, 0)) * math.min(1.5, self:GetStamina() / 60)
     for bName, data in pairs(shadowCtrls) do
@@ -3221,11 +3227,15 @@ function ENT:Tick()
         for _, k in ipairs(shadowDampDatas) do
             data[k] = (data[k] or 0) * forceMul * (data.addMass and mass or 1)
         end
+
+        --data.maxspeed = 10
         
         pObj:ComputeShadowControl(data)
         pObj:Wake()
     end
+
 end
+
 if SERVER then return end
 
 local noDrawBones = {
@@ -3581,11 +3591,14 @@ function ENT:CalcViewModelView(wep, vm, oldPos, oldAng, pos, ang)
     --print(ang)
 
     if IsValid(wep) then
+        local oldPos, oldAng = pos, ang
         if wep.CalcViewModelView then 
             pos, ang = wep:CalcViewModelView(vm, pos, ang, pos, ang)
         elseif wep.GetViewModelPosition then 
             pos, ang = wep:GetViewModelPosition(pos, ang) 
         end
+
+        pos, ang = pos or oldPos, ang or oldAng
     end
     --local _, delta = WorldToLocal(vector_origin, angle_zero, eyepos, eyeang)
     --print(self:GetRArmDelta())
