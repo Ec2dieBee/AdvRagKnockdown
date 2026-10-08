@@ -23,8 +23,9 @@ AddCSLuaFile()
 local getController = Savee_AdvRagKnockdown_GetController
 
 local cvPrefix = "savee_advragknockdown_"
-local isSP = game.SinglePlayer()
 local VBoxInstalled = ConVarExists("vbox_contact_damping")
+local isSP = game.SinglePlayer()
+local hookTable = hook.GetTable()
 
 local vector_origin = Vector()
 
@@ -244,7 +245,7 @@ local twoHandsHTs = {
     ["crossbow"] = true,
 }
 local noAimHTs = {
-    [""] = true,
+    --[""] = true,
     ["normal"] = true,
     ["fist"] = true,
 }
@@ -587,8 +588,11 @@ ENT.NextGetUp = -1
 
 ENT.Removing = false
 
+ENT.ReplacedConsts = {}
 ENT.ShadowCtrlData = {}
 ENT.DI_MarkedAsTaken = {}
+
+ENT.MotionController_LastRun = -1
 
 ENT.CacheTimers = {}
 ENT.Caches = {
@@ -636,9 +640,11 @@ ENT.KeyInputs = {}
 -- 用以解决30个插件不间断强奸EyePos造成的卡顿
 ENT.VarCaches = {}
 
+ENT.ReactionTime = -1
+
 local anims = {
     Getup = {
-        -- 面朝天
+        -- 面朝地
         {
             Model = "models/Zombie/Classic.mdl",
             Sequence = "slumprise_b",
@@ -653,11 +659,11 @@ local anims = {
             GetUp_Stand = 0.7,
             GetUp_Duck = 0.6,
         },
-        -- 面朝地
+        -- 面朝天
         {
             Model = "models/Zombie/Classic.mdl",
             Sequence = "slumprise_a",
-            AngDelta = Angle(0, -90, 0),
+            AngDelta = Angle(0, 0, 0),
 
             StartCycle = 0.2,
             -- PhysControl Parameter
@@ -675,7 +681,7 @@ local function hasAnim(anim, seq)
     return anim:LookupSequence(seq) ~= -1
 end
 
-if SERVER then
+if SERVER and false then
     timer.Simple(tickInterval, function()
 
 
@@ -923,11 +929,13 @@ function ENT:Initialize()
     rag:Spawn()
     rag.Savee_AdvRagKnockdown_Controller = self
 
+    if not IsValid(rag:GetPhysicsObject()) then rag:Remove() self:Remove() return end
+
     if own:IsNPC() and 
         (getCV("npc_usehook_createentityragdoll", "Bool") 
         or self.PlayingDead and getCV("npc_usehook_createentityragdoll", "Bool")) 
     then
-        local hooks = hook.GetTable().CreateEntityRagdoll
+        local hooks = hookTable.CreateEntityRagdoll
         for _, id in ipairs(wlCERHooks) do
             hooks[id](own, rag, true)
         end
@@ -937,7 +945,7 @@ function ENT:Initialize()
     rag:RemoveEffects(EF_BONEMERGE)
 
     rag:AddEFlags(EFL_DONTBLOCKLOS)
-    rag:SetCollisionGroup(own:IsPlayer() and COLLISION_GROUP_PLAYER or COLLISION_GROUP_NPC_ACTOR)
+    rag:SetCollisionGroup(own:IsPlayer() and own:GetCollisionGroup() or COLLISION_GROUP_NPC_ACTOR)
 
     if own:IsNPC() then constraint.NoCollide(own, rag, 0, 0, false) end
 
@@ -1075,8 +1083,9 @@ function ENT:Initialize()
 
         local ent = data.HitEntity
 
-        local dmg = (spd / 10 - pObj:GetMass()) * math.min(data.DeltaTime, 1) / 1.5
-        if ent:IsNPC() or ent:IsRagdoll() or ent:GetClass() == "func_breakable_surf" then 
+        local rawDmg = (spd / 10 - pObj:GetMass()) * math.min(data.DeltaTime, 1) / 1.5
+        local dmg = rawDmg
+        if ent:IsNPC() or ent:IsRagdoll() or string.StartsWith(ent:GetClass(), "func_") then 
             dmg = dmg / 10
         end
 
@@ -1084,7 +1093,7 @@ function ENT:Initialize()
 
         local di = DamageInfo()
         self.DI_MarkedAsTaken[di] = true
-        di:SetDamage(dmg * (official and 1 or 0.2) * hgMul)
+        di:SetDamage(dmg * (official and 1 or 0.1) * hgMul)
         di:SetDamageType(DMG_CRUSH)
 
         local pAtk = ent:GetPhysicsAttacker()
@@ -1093,6 +1102,12 @@ function ENT:Initialize()
 
         --print(data.HitEntity)
         own:TakeDamageInfo(di, true)
+
+        di:SetAttacker(own)
+        di:SetInflictor(rag)
+        di:SetDamage(rawDmg)
+
+        ent:TakeDamageInfo(di, true)
         self.PreventPhysAttackTill = ct + tickInterval * 2
     
     end)
@@ -1135,6 +1150,7 @@ function ENT:Initialize()
             own:SetIdealYawAndUpdate(oldIdealYaw)
         end]]
 
+        self.MotionController_LastRun = CurTime()
         self:StartMotionController()
         self:AddToMotionController(rag:GetPhysicsObject())
         
@@ -1150,7 +1166,7 @@ function ENT:Initialize()
 
     -- BUG: 市民有这个MOVETYPE的时候会卡列车动画
     -- https://github.com/ValveSoftware/source-sdk-2013/blob/b8cfb12c0e083a2ef5b2f9f9b50f3902fa034474/src/game/server/hl2/npc_citizen17.cpp#L1168
-    own:SetMoveType(MOVETYPE_NONE)
+    own:SetMoveType(MOVETYPE_NONE, true)
     own:SetCollisionGroup(CUSTOM_OWNER_COLLISIONGROUP)
     --own:SetSolid(SOLID_NONE)
     own:SetLightingOriginEntity(rag)
@@ -1262,13 +1278,21 @@ end
 function ENT:TryGetUp(animTbl, forced)
     --do return false end
     if not forced and not self:ShouldGetUp() then return end
+    local own = self:GetOwner()
+    local rag = self:GetRagdoll()
+
+    local var, canGetUp = runThatHook("Savee_AdvRagKnockdown_OnGetUp", own, self, animTbl)
+    if var and not canGetUp then return end
+
+    local spine2 = rag:LookupBone("ValveBiped.Bip01_Spine2") or 1
 
     if not animTbl then
 
         local rag = self:GetRagdoll()
         local besties = {}
         local _, pitch = rag:GetBonePosition(0)
-        pitch = pitch.p
+        local _, pitch2 = rag:GetBonePosition(spine2)
+        pitch = Lerp(0.7, pitch.p, pitch2.p)
         for _, data in ipairs(self.AnimationTable.Getup) do
             local angData = data.Pitch or {0, 0}
             local min, max, rev = angData[1], angData[2], angData[3]
@@ -1283,24 +1307,33 @@ function ENT:TryGetUp(animTbl, forced)
 
     end
 
-    local own = self:GetOwner()
-    local rag = self:GetRagdoll()
-
     local mdlScale = rag.Savee_AdvRagKnockdown_ModelScale
 
     local pos = rag:GetBonePosition(0)
-    local pos2 = rag:GetBonePosition(rag:LookupBone("ValveBiped.Bip01_Spine2") or 1)
+    local pos2 = rag:GetBonePosition(spine2)
 
-    local ang = (pos2 - pos):Angle()
+    local pos3, pos4 = getBoneMatrixPosAng(rag, "ValveBiped.Bip01_L_Calf"), getBoneMatrixPosAng(rag, "ValveBiped.Bip01_R_Calf") --rag:GetBonePosition(rag:LookupBone("ValveBiped.Bip01_L_Calf") or 0)
+    if rag:LookupBone("ValveBiped.Bip01_L_Calf") then
+        pos = LerpVector(0.7, pos, (pos3 + pos4) / 2)
+    end
+
+    local ang = (pos - pos2):GetNormalized()
+    local dot = ang:Dot(own:GetAimVector(true))
+    if dot < 0 then -- 高中数学
+        ang = -ang 
+    end
+    ang = ang:Angle()
     ang:Normalize()
 
+    
     -- TODO: 射线检测
     ang.p = 0
     ang.r = 0
-
-    _, ang = LocalToWorld(vector_origin, (animTbl.AngDelta or Angle()), vector_origin, ang)
+    debugoverlay.BoxAngles(pos2, Vector(0, 0, 0), Vector(64, 0, 0), ang, 3, Color(0, 0, 255))
 
     local anim = self.GetupAnimModel
+
+    self.PlayingDead = false
 
     self.GettingUp = true
     self.GettingUp_SyncingToOwner = false
@@ -1322,6 +1355,8 @@ function ENT:TryGetUp(animTbl, forced)
         mins = -hull,
         maxs = hull,
     })
+
+    _, ang = LocalToWorld(vector_origin, (animTbl.AngDelta or Angle()), vector_origin, ang)
 
     anim:SetPos(tr.HitPos)
     anim:SetAngles(ang)
@@ -1397,7 +1432,7 @@ function ENT:RestorePlayerData()
         own:SetCurrentViewOffset(self:HasKeyInput(IN_DUCK) and own:GetViewOffsetDucked() or offset)
     end
     
-    own:SetMoveType(self.m_iOwnMoveType or MOVETYPE_STEP)
+    own:SetMoveType(self.m_iOwnMoveType or MOVETYPE_STEP, true)
     own:SetCollisionGroup(self.m_iOwnCollisionGroup or COLLISION_GROUP_PLAYER)
     --own:SetSolid(self.m_iOwnSolid or SOLID_OBB)
     own:SetLightingOriginEntity(self.m_entOwnLightOrigin or NULL)
@@ -1428,7 +1463,7 @@ function ENT:OnRemove()
             own:SetEyeAngles(ea, true)
         end
 
-        if own:GetMoveParent() == rag then
+        if own:GetMoveParent(true) == rag then
             own:SetParent(nil)
             own:RemoveEffects(EF_BONEMERGE)
             own:RemoveEffects(EF_BONEMERGE_FASTCULL)
@@ -1452,7 +1487,11 @@ function ENT:OnRemove()
 
     if IsValid(rag) then
         -- 看起来两个都有用
-        constraint.RemoveAll(rag)
+        --constraint.RemoveAll(rag)
+        for _, const in ipairs(self.ReplacedConsts) do
+            if not IsValid(const) then continue end
+            const:Remove()
+        end
         SafeRemoveEntityDelayed(rag, tickInterval)
     end
 
@@ -1619,9 +1658,9 @@ function ENT:Think()
             end
         end
 
-        if self.PlayingDead then
+        if self.PlayingDead and self.ReactionTime <= ct then
             self:PlayDeadThink(own, ct)
-        else
+        elseif not self.PlayingDead then
             --print(self:GetRArmDelta())
             local goal = own:GetCurWaypointPos()
             if goal == vector_origin then goal = own:GetGoalPos() end
@@ -1687,17 +1726,18 @@ function ENT:Think()
             own:SetCondition(COND.NPC_UNFREEZE)
             self.NPCState_Unconsciousness = nil
         end
-
     end
 
 
     -- 操作
 
     if (not isPly and self:GetCachedVar("NPC_CanGetUpVar") or self:HasKeyInput(IN_JUMP)) and not self.GettingUp then
+        local spine2 = rag:LookupBone("ValveBiped.Bip01_Spine2") or 1
         
         local besties = {}
         local _, pitch = rag:GetBonePosition(0)
-        pitch = pitch.p
+        local _, pitch2 = rag:GetBonePosition(spine2)
+        pitch = Lerp(0.7, pitch.p, pitch2.p)
         for _, data in ipairs(self.AnimationTable.Getup) do
             local angData = data.Pitch or {0, 0}
             local min, max, rev = angData[1], angData[2], angData[3]
@@ -1777,6 +1817,12 @@ function ENT:Think()
     elseif flOnGround then
         rag:RemoveFlags(FL_ONGROUND)
         self:SetNW2Bool("Savee_AdvRagKnockdown_OnGround", false)
+    end
+
+    -- 修复偶尔PObj控制消失的问题
+    if self.MotionController_LastRun + 5 <= ct then 
+        --self:StartMotionController()
+        self:AddToMotionController(rag:GetPhysicsObject())
     end
     --print(self.OnGroundState)
 
@@ -1944,7 +1990,7 @@ function ENT:Think()
 
             self:SetParent(nil)
             self:SetPos(tr.HitPos + Vector(0, 0, 0.2))
-            self:SetAngles(angle_zero)
+            self:SetAngles(self.GettingUp_FaceAng)
             self:SetModel(own:GetModel())
             self:SetSequence(isPly and own:SelectWeightedSequence(isfunction(trans) and trans(wep, rawACT) or selectedACT) or own:GetSequence())
             self:SetPlaybackRate(own:GetPlaybackRate())
@@ -1970,7 +2016,7 @@ function ENT:Think()
     
     if own:GetMoveType() ~= MOVETYPE_NONE then
         self.m_iOwnMoveType = own:GetMoveType()
-        own:SetMoveType(MOVETYPE_NONE)
+        own:SetMoveType(MOVETYPE_NONE, true)
     end
     if own:GetCollisionGroup() ~= CUSTOM_OWNER_COLLISIONGROUP then
         self.m_iOwnCollisionGroup = own:GetCollisionGroup()
@@ -2068,8 +2114,8 @@ local torsoang, torsoangdamp, torsospd, torsospddamp, torsodampfactor, torsodelt
 --local torsomovespd, torsomovespddamp, torsomovespddelta = 450, 450, 0.2
 local headang, headangdamp, headspd, headspddamp, headdampfactor, headdelta = 30, 30, 0, 0, 1, 0.1
 local handang, handangdamp, handspd, handspddamp, handdampfactor, handdelta = 350, 250, 20, 0, 0.8, 0.08
-local handaimang, handaimangdamp, handaimspd, handaimspddamp, handaimdampfactor, handaimdelta = 225, 135, 0, 0, 0.8, isSP and 0.05 or 0.08
-local armaimang, armaimangdamp, armaimspd, armaimspddamp, armaimdampfactor, armaimdelta = 175, 250, 0, 0, 0.8, 0.1
+local handaimang, handaimangdamp, handaimspd, handaimspddamp, handaimdampfactor, handaimdelta = 225, 135, 20, 0, 0.8, isSP and 0.05 or 0.08
+local armaimang, armaimangdamp, armaimspd, armaimspddamp, armaimdampfactor, armaimdelta = 225, 280, 20, 0, 0.8, 0.1
 local pelvisang, pelvisangdamp, pelvisspd, pelvisspddamp, pelvisdampfactor, pelvisdelta = 0, 10, 0, 0, 0.8, 0.15
 local legang, legangdamp, legspd, legspddamp, legsdampfactor, legsdelta = 10, 5, 0, 0, 0.5, 0.2
 
@@ -2539,7 +2585,7 @@ function ENT:DealWithAnims(isPly, aimingWeapon, noArm, wepHT, isMeleeHT)
             shadowCtrls["ValveBiped.Bip01_R_Hand"] = {
                 --secondstoarrive = tickInterval / 10,
                 pos = rhToLocalPos,
-                angle = Angle(-5, 0, 180),
+                angle = Angle(0, 0, 180),
                 maxspeed = isPly and handaimspd or 10,
                 maxspeeddamp = handaimspddamp,
                 maxangular = handaimang,
@@ -2654,7 +2700,7 @@ function ENT:DealWithAnims(isPly, aimingWeapon, noArm, wepHT, isMeleeHT)
         self:SetLArmDelta(1)
         self:SetRArmDelta(1)
 
-        local lhand = (isPly and noArm) and self:HasKeyInput(IN_ATTACK) or in_forward
+        local lhand = (isPly and noArm) and self:HasKeyInput(IN_ATTACK) or (not isPly or not noArm) and in_forward
         local rhand = self:HasKeyInput(IN_ATTACK2) or (not isPly and in_forward)
 
         local forward, right = aea:Forward() * 30 * mdlScale, aea:Right() * 5 * mdlScale
@@ -2799,7 +2845,7 @@ function ENT:DealWithAnims(isPly, aimingWeapon, noArm, wepHT, isMeleeHT)
         if in_duck then
             ang:RotateAroundAxis(Vector(0, -1, 0), 25)
         elseif self.LowPose then --IsValid(wep) and wep.ARC9 and wep:GetBipod() then
-            ang:RotateAroundAxis(Vector(0, -1, 0), -55)
+            ang:RotateAroundAxis(ang:Up(), 55)
         end
         
         if wepHT and twoHandsHTs[wepHT] then
@@ -2832,7 +2878,7 @@ function ENT:Tick()
     local rag = self:GetRagdoll()
     local mdlScale = rag.Savee_AdvRagKnockdown_ModelScale
 
-    if self.Initialized and (not self.GettingUp_SyncingToOwner and own:GetMoveParent() ~= rag) then
+    if self.Initialized and (not self.GettingUp_SyncingToOwner and own:GetMoveParent(true) ~= rag) then
         self:RemoveSelf()
         return
     elseif not own:IsEffectActive(EF_BONEMERGE) then
@@ -2883,11 +2929,14 @@ function ENT:Tick()
     end
 
     if consc < noArmVal then noArm = true end
-    
-    if self.PlayingDead then return end
 
     local in_forward = not isPly and caches.NPC_HasMoveGoal or self:HasKeyInput(IN_FORWARD)
     local in_back = self:HasKeyInput(IN_BACK)
+
+    if isPly and (aimingWeapon or in_forward or self:HasKeyInput(IN_ATTACK) or self:HasKeyInput(IN_ATTACK2)) then
+        self.PlayingDead = false
+    end
+    if self.PlayingDead then return end
 
     -- 主体控制
     -- 因为太几把占性能了所以挪走了
@@ -3064,13 +3113,13 @@ function ENT:Tick()
                 lWinch:Remove()
             end
 
-            local spd = self.LHand_GrabbingWorld and 4500 or 2000
+            local spd = 4500 --self.LHand_GrabbingWorld and 4500 or 2000
             --if not isSP then spd = spd * 2 end
 
             if not IsValid(lWinch) then
                 local data = self.LHand_GrabbingData
-                -- Z-City的参数(给我的感觉), 和我进去爬的时候的手部位置几乎一致
-                lWinch = constraint.Elastic(rag, data.ent, pObjs["ValveBiped.Bip01_Spine2"].id, data.pObjID, (Vector(self.LowPose and 0 or -6, 6, 2) - aea:Forward()), data.wtlPos, spd, 250, 1, "", 0, true, Color(255, 255, 255, 0))
+                -- Z-City的参数(给我的感觉), 和我进去爬的时候的手部位置几乎一致所以我猜这就是他们爬行的参数
+                lWinch = constraint.Elastic(rag, data.ent, pObjs["ValveBiped.Bip01_Spine2"].id, data.pObjID, (Vector((self.LowPose and isPly) and 0 or -6, 6, 2) - aea:Forward()), data.wtlPos, spd, 250, 1, "", 0, true, Color(255, 255, 255, 0))
                 if lWinch then 
                     const:DeleteOnRemove(lWinch)
                 end
@@ -3118,12 +3167,12 @@ function ENT:Tick()
                 rWinch:Remove()
             end
 
-            local spd = self.RHand_GrabbingWorld and 4500 or 2000
+            local spd = 4500 --self.RHand_GrabbingWorld and 4500 or 2000
             --if not isSP then spd = spd * 2 end
 
             if not IsValid(rWinch) then
                 local data = self.RHand_GrabbingData
-                rWinch = constraint.Elastic(rag, data.ent, pObjs["ValveBiped.Bip01_Spine2"].id, data.pObjID, (Vector(self.LowPose and 0 or -6, 6, -2) - aea:Forward()), data.wtlPos, spd, 250, 1, "", 0, true, Color(255, 255, 255, 0))
+                rWinch = constraint.Elastic(rag, data.ent, pObjs["ValveBiped.Bip01_Spine2"].id, data.pObjID, (Vector((self.LowPose and isPly) and 0 or -6, 6, -2) - aea:Forward()), data.wtlPos, spd, 250, 1, "", 0, true, Color(255, 255, 255, 0))
                 if rWinch then constR:DeleteOnRemove(rWinch) end
 
                 self.RHand_Grabbing_Winch = rWinch
@@ -3167,9 +3216,10 @@ end
 
 -- 这是他妈的神迹!!!!!!!
 function ENT:PhysicsSimulate()
+    self.MotionController_LastRun = CurTime()
     if self.PlayingDead then return end
-
     local own = self:GetOwner()
+
     local rag = self:GetRagdoll()
     local aea = self:GetAimEyeAngles()
 
@@ -3332,7 +3382,7 @@ function ENT:Draw(fl)
             return
         end
 
-        if own:GetMoveParent() ~= rag then
+        if own:GetMoveParent(true) ~= rag then
             --
         end
 
@@ -3361,7 +3411,7 @@ function ENT:CustomRagRenderOverride(fl)
     if not IsValid(ctrl) then return end
     local own = ctrl:GetOwner()
     local ve = LocalPlayer():GetViewEntity()
-    if ve ~= own or not IsValid(own) or (self.Initialized and own:GetMoveParent() ~= self) then return end
+    if ve ~= own or not IsValid(own) or (self.Initialized and own:GetMoveParent(true) ~= self) then return end
 
     own:SetupBones()
 

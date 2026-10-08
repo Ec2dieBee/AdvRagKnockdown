@@ -48,7 +48,10 @@ local cv_kd_playdead_chance_usepercent = CreateConVar(cvPrefix .. "playdead_chan
 local cv_kd_playdead_chance_mindmgpercent = CreateConVar(cvPrefix .. "playdead_chance_mindamagepercent", 0.45, cvTags, "假死几率最小时的伤害占生命值百分比", 0, 1)
 local cv_kd_playdead_chance_maxdmgpercent = CreateConVar(cvPrefix .. "playdead_chance_maxdamagepercent", 0.8, cvTags, "假死几率最大时的伤害占生命值百分比", 0, 1)
 local cv_kd_playdead_npc_soundemitchance = CreateConVar(cvPrefix .. "playdead_npc_soundemitchance", 0.1, cvTags, "假死NPC在通常情况下挨打发出受伤声音的几率", 0, 1)
+local cv_kd_playdead_ply_usehook_senddeathnotice = CreateConVar(cvPrefix .. "playdead_ply_usehook_senddeathnotice", 1, cvTags, "在玩家进入假死时调用SendDeathNotice", 0, 1)
 local cv_kd_playdead_npc_usehook_senddeathnotice = CreateConVar(cvPrefix .. "playdead_npc_usehook_senddeathnotice", 1, cvTags, "在NPC假死时调用SendDeathNotice", 0, 1)
+local cv_kd_playdead_npc_reactiontime = CreateConVar(cvPrefix .. "playdead_npc_reactiontime", 5, cvTags, "NPC从进入假死到可以再次行动的时间", 0)
+--local cv_kd_playdead_deathnotice_cooldown = CreateConVar(cvPrefix .. "playdead_deathnotice_cooldown", 5, cvTags, "死亡提示间隔, 适合防止骤死导致的双死亡提示", 0)
 
 local cv_kd_knockdown_plyinveh = CreateConVar(cvPrefix .. "knockdown_playerinvehicle", 1, cvTags, "是否击倒在载具内的玩家(如果玩家在车里则试图让他们离开载具, 如果他们能)", 0, 1)
 
@@ -125,6 +128,7 @@ end)]]
 --local npcMeta = FindMetaTable("NPC")
 
 local isSP = game.SinglePlayer()
+local hookTable = hook.GetTable()
 
 -- 防止你射的正爽的时候子弹从你的眼睛打到你的胳膊
 local whitelistedBones = {
@@ -450,9 +454,6 @@ local setItOnMe = {
     "RenderFX",
     "Bodygroup",
     "BodyGroups",
-    "Velocity",
-    "AbsVelocity",
-    "LocalVelocity",
     "FlexScale",
     "FlexWeight",
 }
@@ -487,6 +488,33 @@ for _, str in ipairs(setItOnMe) do
 
 end
 
+local setItOnMyPhys = {
+    "Velocity",
+    "AbsVelocity",
+    "LocalVelocity",
+}
+
+for _, str in ipairs(setItOnMyPhys) do
+
+    local function override(ent, ...)
+        local ctrl = getController(ent)
+        if not IsValid(ctrl) then return __undetoured(ent, ...) end
+
+        local isPly = ent:IsPlayer()
+        local rag = ctrl:GetRagdoll()
+        
+        for i = 0, rag:GetPhysicsObjectCount() - 1 do
+            local pObj = rag:GetPhysicsObjectNum(i)
+            pObj[isPly and "ApplyForceCenter" or "SetVelocityInstantaneous"](pObj, ...)
+        end
+
+        return __undetoured(ent, ...)
+    end
+
+    funchooks.Add("Entity.Set" .. str, "Savee_AdvRagKnockdown_Syncing", override)
+
+end
+
 local doOriginalHTs = {
     ["knife"] = true,
     ["melee"] = true,
@@ -513,7 +541,7 @@ funchooks.Add("Player.GetShootPos", "Savee_AdvRagKnockdown_Sync", function(ply, 
 
     if nonFirearm then return ply:EyePos(raw, ...) end
     --print(nonFirearm)
-    local mtx = rag:GetBoneMatrix(rag:LookupBone("ValveBiped.Bip01_R_Hand"))
+    local mtx = rag:GetBoneMatrix(rag:LookupBone("ValveBiped.Bip01_R_Hand") or 0)
 
     -- 多门游戏支持
     if not mtx then return __undetoured(ply, raw, ...) end
@@ -686,6 +714,14 @@ funchooks.Add("Entity.EyeAngles", "Savee_AdvRagKnockdown_Sync", function(ply, ra
     return final
    
 
+end)
+
+funchooks.Add("Entity.SetMoveType", "Savee_AdvRagKnockdown_Bypass", function(ply, var, raw, ...)
+    local ctrl = getController(ply)
+    if raw or not IsValid(ctrl) then return __undetoured(ply, var, raw, ...) end
+
+    ctrl.m_iOwnMoveType = var
+    return
 end)
 
 -- AI给我提了个醒(是的有人很自恋)
@@ -1229,14 +1265,25 @@ if SERVER then
         return false
     end
 
+    ---是的, 因为这是**不兼容**, 所以下面的代码做了**兼容**
+    --[[local incompatibleOnNPCKilledHooks = {
+        "ARC9_OnNPCKilled", -- 会草飞Killicon绘制
+    }]]
+
     ---@param ent NPC
     local function doPlayDead(ent, ctrl, di)
-        if cv_kd_playdead_npc_usehook_senddeathnotice:GetBool() then
+        if not ctrl.LastStand and (ent:IsPlayer() and cv_kd_playdead_ply_usehook_senddeathnotice:GetBool()) or (ent:IsNPC() and cv_kd_playdead_npc_usehook_senddeathnotice:GetBool()) then
             local atk, inf
             if di and not isvector(di) then
                 atk = di:GetAttacker()
                 inf = di:GetInflictor()
-                if not IsValid(inf) then inf = atk end
+
+                -- ARC9兼容
+                if inf == atk and isfunction(atk.GetActiveWeapon) then
+                    local wep = atk:GetActiveWeapon()
+                    inf = (IsValid(wep) and wep.ARC9) and wep or inf
+                end
+                --if not IsValid(inf) then inf = di:GetInflictor() end
             end
 
             local fl = 0
@@ -1245,35 +1292,66 @@ if SERVER then
             elseif atk:IsNPC() and atk:Disposition(ent) == D_LI then
                 fl = 2
             end
-            hook.Run("SendDeathNotice", atk, IsValid(inf) and inf:GetClass() or "", hook.Run("GetDeathNoticeEntityName", ent), fl)
+
+            --local hooks = hookTable.OnNPCKilled
+            --[[for _, id in ipairs(incompatibleOnNPCKilledHooks) do
+                if not hooks[id] then continue end
+                hooks[id](ent, atk, inf)
+            end]]
+            hook.Run("SendDeathNotice", 
+                atk:IsPlayer() and atk or hook.Run("GetDeathNoticeEntityName", atk), IsValid(inf) and inf:GetClass(), 
+                ent:IsPlayer() and ent or hook.Run("GetDeathNoticeEntityName", ent), fl)
         end
 
-        
-        ent:ClearSchedule()
-        ent:ClearGoal()
-        ent:TaskComplete()
-        ent:SetIdealActivity(ACT_IDLE)
-        ent:SetActivity(ACT_IDLE)
-        ent:StopMoving(true)
+        if ent:IsNPC() then
+            ent:ClearSchedule()
+            ent:ClearGoal()
+            ent:TaskComplete()
+            ent:SetIdealActivity(ACT_IDLE)
+            ent:SetActivity(ACT_IDLE)
 
-        ctrl.EmittingSound = true
-        ent:SetSchedule(SCHED_DIE_RAGDOLL)
-        ctrl.EmittingSound = false
+            ctrl.EmittingSound = true
+            --ent:SetSchedule(SCHED_DIE_RAGDOLL)
+            ent:StartEngineTask(ai.GetTaskID("TASK_EMIT_DEATH"), 0)
+            ctrl.EmittingSound = false
+            ctrl.ReactionTime = CurTime() + cv_kd_playdead_npc_reactiontime:GetFloat()
+        end
 
         ctrl.PlayingDead = true
     end
+
+    local blMdlCache = {
+        ["models/player.mdl"] = true
+    }
+
+    local wlMoveTypes = {
+        [MOVETYPE_CUSTOM] = true,
+        [MOVETYPE_STEP] = true,
+        [MOVETYPE_LADDER] = true,
+        [MOVETYPE_ISOMETRIC] = true,
+        [MOVETYPE_WALK] = true,
+    }
 
     local function doKnockdown(ply, vec, bone, playdead)
         if not cv_kd_enabled:GetBool() then return end
         
         if not entTypeCheck(ply) then return end
+
+        local mdl = ply:GetModel()
+        if blMdlCache[mdl] then 
+            return
+        elseif not file.Exists(string.sub(mdl, 1, -4) .. "phy", "GAME") then -- 没有物理文件击倒个瘠薄
+            blMdlCache[mdl] = true
+            return
+        end
+
         --print("正在击倒: ", ply, vec, bone)
 
         local oldCtrl = getController(ply)
         if IsValid(oldCtrl) then
             if playdead and not oldCtrl.LastStand then
-                oldCtrl.LastStand = true
                 doPlayDead(ply, oldCtrl, vec)
+                oldCtrl.LastStand = true
             end
             oldCtrl:CancelGetUp()
 
@@ -1293,8 +1371,8 @@ if SERVER then
             ctrl:SetOwner(ply)
             ctrl:SetPos(ply:GetPos())
             if playdead then
-                ctrl.LastStand = true
                 doPlayDead(ply, ctrl, vec)
+                ctrl.LastStand = true
             end
             ctrl:Spawn()
             ctrl.PreventPhysAttackTill = CurTime() + 0.05
@@ -1437,16 +1515,6 @@ if SERVER then
 
     end
 
-    local blMdlCache = {}
-
-    local wlMoveTypes = {
-        [MOVETYPE_CUSTOM] = true,
-        [MOVETYPE_STEP] = true,
-        [MOVETYPE_LADDER] = true,
-        [MOVETYPE_ISOMETRIC] = true,
-        [MOVETYPE_WALK] = true,
-    }
-
     local function doKnockdownDetection(ent, di, take)
 
         if not cv_kd_enabled:GetBool() or not cv_kd_knockdown_defaultbehaviour:GetBool() then return end
@@ -1479,13 +1547,6 @@ if SERVER then
     
         --if not ent:LookupBone("ValveBiped.Bip01_L_Hand") or not ent:LookupBone("ValveBiped.Bip01_R_Hand") then return end 
         --if not then return end
-        local mdl = ent:GetModel()
-        if blMdlCache[mdl] then 
-            return
-        elseif not file.Exists(string.sub(mdl, 1, -4) .. "phy", "GAME") then -- 没有物理文件击倒个瘠薄
-            blMdlCache[mdl] = true
-            return
-        end
 
         --print("我真的要被踹翻了Help: ", ent, di)
 
@@ -1566,6 +1627,7 @@ if SERVER then
         --local _, correctedAng = LocalToWorld(vector_origin, Angle(0, 0, -90), vector_origin, lArmP:GetAngles())
         --lHandP:SetAngles(correctedAng)
         local const = constraint.AdvBallsocket(rag, rag, lArm, lHand, wtlLH, nil, 0, 0, minAng.p, minAng.y, minAng.r, maxAng.p, maxAng.y, maxAng.r, fric, fric, fric, 0, 1)
+        
         rag:RemoveInternalConstraint(lHand)
 
         lArmP:SetPos(oldArmPos)
@@ -1575,9 +1637,12 @@ if SERVER then
         lHandP:SetAngles(oldHandAng)
 
 
-        --[[if IsValid(const) then 
-            table.insert(ctrl.ReplacedConsts, {lHandP, lArmP, wtlLH, lHandP:GetMass(), lArmP:GetMass()})
-        end]]
+        if IsValid(const) then 
+            const.CreatedByARKD = true
+            ctrl.ReplacedConsts[#ctrl.ReplacedConsts + 1] = const
+            table.remove(rag.Constraints)
+            --table.insert(ctrl.ReplacedConsts, {lHandP, lArmP, wtlLH, lHandP:GetMass(), lArmP:GetMass()})
+        end
 
 
         --lHandP:SetAngles(oldArmAng)
@@ -1605,9 +1670,9 @@ if SERVER then
     
         Savee_AdvRagKnockdown_ReplaceRagConstraint(ctrl, rag, pObjs, "ValveBiped.Bip01_Head1", "ValveBiped.Bip01_Spine2", -Angle(15, 60, 50), Angle(15, 40, 50), 0)
 
-        angMax = Angle(80, 80, 80)
-        Savee_AdvRagKnockdown_ReplaceRagConstraint(ctrl, rag, pObjs, "ValveBiped.Bip01_L_UpperArm", "ValveBiped.Bip01_Spine2", -angMax, angMax, 0)
-        Savee_AdvRagKnockdown_ReplaceRagConstraint(ctrl, rag, pObjs, "ValveBiped.Bip01_R_UpperArm", "ValveBiped.Bip01_Spine2", -angMax, angMax, 0)
+        --angMax = Angle(80, 80, 80)
+        --Savee_AdvRagKnockdown_ReplaceRagConstraint(ctrl, rag, pObjs, "ValveBiped.Bip01_L_UpperArm", "ValveBiped.Bip01_Spine2", -angMax, angMax, 0)
+        --Savee_AdvRagKnockdown_ReplaceRagConstraint(ctrl, rag, pObjs, "ValveBiped.Bip01_R_UpperArm", "ValveBiped.Bip01_Spine2", -angMax, angMax, 0)
 
     end
 
@@ -1941,13 +2006,17 @@ if SERVER then
         AddOriginToPVS(ply:EyePos())
     end)
 
-    -- 你知道吗我又加了两个感叹号
+    -- 我们有单独的布娃娃伤害计算, 所以把这个玩意剔除掉
     hook.Add("EntityTakeDamage", "Savee_AdvRagKnockdown_OwnerCorrection", function(rag, di)
 
         local atk = di:GetAttacker()
 
         local ctrl = getController(atk)
-        if IsValid(ctrl) and atk:IsRagdoll() then di:SetAttacker(ctrl:GetOwner()) end
+        if IsValid(ctrl) and atk:IsRagdoll() then 
+            return true
+        elseif IsValid(getController(rag)) and rag:IsRagdoll() and atk == di:GetInflictor() and di:IsDamageType(DMG_CRUSH) then
+            return true
+        end
     
     end)
     hook.Add("PostEntityTakeDamage", "Savee_AdvRagKnockdown_RagDamage", function(rag, di, take)
@@ -2256,14 +2325,17 @@ else
         local result = self:CalcView(ply, pos, ang, fov)
 
         if not result then return end
-        pos, ang = result.origin, result.angles
+        --pos, ang = result.origin, result.angles
 
         calcview_last_stored = ct
-        calcview_last_pos = pos
-        calcview_last_ang = ang
+        calcview_last_pos = result.origin --pos
+        calcview_last_ang = result.angles --ang
         local newResult = hook.Run("CalcView", ply, pos, ang, fov, znear, zfar, true)
         if istable(newResult) then
             newResult.drawviewer = result.drawviewer
+            -- 原理未知的VManip粗支持
+            newResult.origin = calcview_last_pos
+            newResult.angles = calcview_last_ang
             result = newResult
         end
 
@@ -2491,6 +2563,16 @@ hook列表
         ent, 实体, 要被击倒的实体
         ctrl, 实体, 控制器实体
         groundTr, TraceResult, 地面射线检测(是否着地)
+    传出:
+        bool, 是否应该起身, 返还nil**会交给下个钩子处理, 或是让默认算法处理**
+
+    **Savee_AdvRagKnockdown_OnGetUp**
+    介绍:
+        在实体起身时调用
+    传入: 
+        ent, 实体, 起来的实体
+        ctrl, 实体, 控制器实体
+        animTbl, table, 选定的动画
     传出:
         bool, 是否应该起身, 返还nil**会交给下个钩子处理, 或是让默认算法处理**
 

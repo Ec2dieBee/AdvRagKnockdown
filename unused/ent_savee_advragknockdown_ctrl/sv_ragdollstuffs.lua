@@ -362,7 +362,6 @@ function ENT:TryGetUp(animTbl, forced)
 end
 
 function ENT:ShouldGetUp()
-
     if self.NextGetUp > CurTime() then return false end
 
     local own = self:GetOwner()
