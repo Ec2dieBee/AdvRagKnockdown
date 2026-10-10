@@ -496,19 +496,20 @@ local setItOnMyPhys = {
 
 for _, str in ipairs(setItOnMyPhys) do
 
-    local function override(ent, ...)
+    local function override(ent, var, raw, ...)
         local ctrl = getController(ent)
-        if not IsValid(ctrl) then return __undetoured(ent, ...) end
+        if raw or not IsValid(ctrl) then return __undetoured(ent, var, raw, ...) end
 
         local isPly = ent:IsPlayer()
         local rag = ctrl:GetRagdoll()
         
         for i = 0, rag:GetPhysicsObjectCount() - 1 do
             local pObj = rag:GetPhysicsObjectNum(i)
-            pObj[isPly and "ApplyForceCenter" or "SetVelocityInstantaneous"](pObj, ...)
+            if not IsValid(pObj) then continue end
+            pObj[isPly and "ApplyForceCenter" or "SetVelocity"](pObj, var, raw, ...)
         end
 
-        return __undetoured(ent, ...)
+        return __undetoured(ent, var, raw, ...)
     end
 
     funchooks.Add("Entity.Set" .. str, "Savee_AdvRagKnockdown_Syncing", override)
@@ -718,7 +719,7 @@ end)
 
 funchooks.Add("Entity.SetMoveType", "Savee_AdvRagKnockdown_Bypass", function(ply, var, raw, ...)
     local ctrl = getController(ply)
-    if raw or not IsValid(ctrl) then return __undetoured(ply, var, raw, ...) end
+    if raw or not IsValid(ctrl) or not ctrl.Initialized then return __undetoured(ply, var, raw, ...) end
 
     ctrl.m_iOwnMoveType = var
     return

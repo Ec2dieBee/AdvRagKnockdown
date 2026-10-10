@@ -1,4 +1,5 @@
--- ToDo: 写一个布娃娃综控Addon 然后把它塞进去
+-- ToDo..?: 写一个布娃娃综控Addon 然后把它塞进去
+-- 也许这个就是综控了?
 -- 很显然这会和Ragknockdown冲突, 但是目前先做进阶起身(是的 你不能在Ragknockdown里创飞一个正在起来的人, 这不好)
 -- Done: NPC兼容
 
@@ -19,6 +20,7 @@
 -- Done: 引入类似Z-City的健康系统, (意识(能否控制武器/控制力), 体力(最大控制力), 我猜这两个够用了(坐等其他人搬运Z-City健康系统.jpg))
 -- Done: 让Miku可以舒适的射击(G🐀神秘更新让JiggleBones强制替代了PhysBone 26/8/2 不知道怎么又改回去了 26/8/19 疑似插件导致🐹🐹🐹)
 -- ToDo: 加个切换伸手的可选项(CL/SV)
+-- ToDo: CLASSIC KNOCKDOWN
 AddCSLuaFile()
 local getController = Savee_AdvRagKnockdown_GetController
 
@@ -613,7 +615,7 @@ ENT.RagLastModel = ""
 ENT.GettingUp = false
 ENT.GettingUp_Crouch = false
 ENT.GettingUp_SyncingToOwner = false
-ENT.GettingUp_FaceAng = Angle()
+--ENT.GettingUp_FaceAng = Angle()
 
 ENT.UsePlayerAimAnimation = false
 
@@ -1337,7 +1339,7 @@ function ENT:TryGetUp(animTbl, forced)
 
     self.GettingUp = true
     self.GettingUp_SyncingToOwner = false
-    self.GettingUp_FaceAng = ang
+    --self.GettingUp_FaceAng = ang
     self.PreventPhysAttackTill = CurTime() + 0.2
     anim:SetParent(nil)
 
@@ -1990,16 +1992,14 @@ function ENT:Think()
 
             self:SetParent(nil)
             self:SetPos(tr.HitPos + Vector(0, 0, 0.2))
-            self:SetAngles(self.GettingUp_FaceAng)
+            self:SetAngles(Angle(0, aea.y, 0))
             self:SetModel(own:GetModel())
             self:SetSequence(isPly and own:SelectWeightedSequence(isfunction(trans) and trans(wep, rawACT) or selectedACT) or own:GetSequence())
             self:SetPlaybackRate(own:GetPlaybackRate())
             self:SetCycle(own:GetCycle())
             self:SetPoseParameter("aim_pitch", own:GetPoseParameter("aim_pitch"))
             self:SetPoseParameter("aim_yaw", own:GetPoseParameter("aim_yaw"))
-            self.GettingUp_SyncingToOwner = true
-            --own:SetAngles(self.GettingUp_FaceAng)
-            --self:SetNoDraw(false)
+            self.GettingUp_SyncingToOwner = true            --self:SetNoDraw(false)
         elseif cyc >= recover[1] then
             self:SetPoseParameter("aim_pitch", own:GetPoseParameter("aim_pitch"))
             self:SetPoseParameter("aim_yaw", own:GetPoseParameter("aim_yaw"))
@@ -2323,7 +2323,7 @@ function ENT:DealWithAnims(isPly, aimingWeapon, noArm, wepHT, isMeleeHT)
         local oldLArm = self:GetLArmDelta()
         local oldRArm = self:GetRArmDelta()
 
-        own:SetAbsVelocity(rag:GetVelocity())
+        own:SetAbsVelocity(rag:GetVelocity(), true)
 
         local pos, ang = getPhysBonePosAng(pObjs, "ValveBiped.Bip01_R_Hand")
 
