@@ -15,10 +15,10 @@ NPCs Can Be knockdowned
 1. **Devs of Z-City** - **Main Inspiration** of this addon
 2. **TriggerMiku** - Playtester, lua sorting, useful advices on code
 3. **r_nil** - Useful advices on code, some codefixes in his fork
-4. **The Creator of Selected Action Maps** - For the pressure testing(also cool campaign) map(sa_01), and providing special crashing conditions(sa_03)
+4. **The Creator of Selected Action Maps** - For the pressure testing(also cool campaign) maps(sa_01), and providing special crashing conditions(sa_03)
 5. **Ragdoll Resizer** - For letting me know the existance of PhysObj:GetMeshConvexes()
 6. **Savee14702** - The dumb who tried write this all his own without using ANY of Z-City's code(seems I did that, wow)
-
+ 
 ---
 # And also
 Commits may(mostly) contain Chinese since 2026/7/11 cuz my English is really bad  
@@ -30,5 +30,9 @@ This addon may be **abandoned** at **ANY TIME** due to my laziness lol
 AI is involved in  
 1. Some code quality check(Initiated by me for fun and it DOES help), and all the codes are rather written by me or copied directly from the GMod Wiki Examples(yes the codes listed in each functions)  
 2. Some mathematical formulas/solutions used for certain calculations, because it is obvious that a high school student's mind cannot handle advanced mathematics in universities(not yet for now)  
+3. English Translations(Cuz my English is bad, tho I'll check/revise them)  
+4. Engine Crash Analysis(Yes, you, vPhysics.dll and you, SetMoveParent)(Still assess violation with no further information)
 AI doesn't write any functional(?) code here, and I will never let it do so  
 if one day I changed my mind, this text will be changed  
+ 
+(My brain is written by AI so I'm an AD/ND(Artificial(In social ascepts)/Natural(In biological ascepts) Dumbass) now, wow)

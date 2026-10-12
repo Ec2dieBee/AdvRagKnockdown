@@ -552,7 +552,7 @@ local function getBoneMatrixPosAng(rag, name)
 end
 
 local function getCV(cv, st)
-    cv = GetConVar(cvPrefix .. cv)
+    cv = isstring(cv) and GetConVar(cvPrefix .. cv) or cv
     if not cv then return end
     if st then
         cv = cv["Get" .. st](cv)
@@ -763,6 +763,9 @@ local function modifyRagdoll(rag, pObjs, ownVel)
         if not pObj then continue end
         oldVels[i] = pObj:GetVelocity()
         pObj:EnableMotion(false)
+        pObj:AddGameFlag(FVPHYSICS_NO_IMPACT_DMG)
+        --pObj:SetMaterial("friction_25")
+        --pObj:SetDragCoefficient(-1000)
     end
 
     Savee_AdvRagKnockdown_ReplaceRagConstraints(rag, pObjs)
@@ -775,7 +778,6 @@ local function modifyRagdoll(rag, pObjs, ownVel)
         pObj:SetVelocityInstantaneous(oldVels[i] + ownVel)
     end
 
-    -- 在这加个CV
     if not getCV("rag_minmasslimit", "Bool") then return end
     
     local objCount = rag:GetPhysicsObjectCount()
@@ -898,75 +900,75 @@ function ENT:Initialize()
     if own:IsNPC() then
         ownVel = ownVel + own:GetMoveVelocity()
     end
-
+    
     self:SetStamina(100)
     self:SetConsciousness(100)
-
+    
     --local animTbl = self.AnimationTable.Getup[1]
-
+    
     self:SetModel(own:GetModel())
     self:SetSequence(own:GetSequence())
     self:DrawShadow(false)
     self:AddEffects(EF_NOSHADOW)
     self:AddEffects(EF_NORECEIVESHADOW)
-
+    
     self:SetPlaybackRate(1)
     self:SetCycle(own:GetCycle())
     
     --self:SetNoDraw(true)
     self:SetCollisionGroup(COLLISION_GROUP_IN_VEHICLE)
-
+    
     -- 部分布娃娃那写死的约束将我强奸300万次(遍历我的每个左脑细胞)
     local rag = ents.Create("prop_ragdoll")
     rag:SetModel(own:GetModel())
     rag:SetPos(self:GetPos())
     rag:SetAngles(own:GetAngles())
-
+    
     cloneAtoB(own, rag)
     --rag:RemoveFlags(FL_OBJECT)
-
+    
     rag:SetParent(own)
     rag:AddEffects(EF_BONEMERGE)
-
+    
     rag:Spawn()
     rag.Savee_AdvRagKnockdown_Controller = self
-
-    if not IsValid(rag:GetPhysicsObject()) then rag:Remove() self:Remove() return end
-
+    
+    --if not IsValid(rag:GetPhysicsObject()) then rag:Remove() self:Remove() return end
+    
     if own:IsNPC() and 
-        (getCV("npc_usehook_createentityragdoll", "Bool") 
-        or self.PlayingDead and getCV("npc_usehook_createentityragdoll", "Bool")) 
+    (getCV("npc_usehook_createentityragdoll", "Bool") 
+    or self.PlayingDead and getCV("npc_usehook_createentityragdoll", "Bool")) 
     then
         local hooks = hookTable.CreateEntityRagdoll
         for _, id in ipairs(wlCERHooks) do
             hooks[id](own, rag, true)
         end
     end
-
+    
     rag:SetParent(nil)
     rag:RemoveEffects(EF_BONEMERGE)
-
+    
     rag:AddEFlags(EFL_DONTBLOCKLOS)
     rag:SetCollisionGroup(own:IsPlayer() and own:GetCollisionGroup() or COLLISION_GROUP_NPC_ACTOR)
-
-    if own:IsNPC() then constraint.NoCollide(own, rag, 0, 0, false) end
-
+    
+    --if own:IsNPC() then constraint.NoCollide(own, rag, 0, 0, false) end
+    
     --modifyRagdoll(rag)
-
+    
     rag:SetNW2Entity("Savee_AdvRagKnockdown_Controller", self)
-
+    
     -- noob gore mod 2支持
     rag.destructible_Corpse = false
     --own.destructible_Corpse = false
-
+    
     --self:DeleteOnRemove(rag)
-
+    
     --rag:DeleteOnRemove(self)
     --rag:CollisionRulesChanged()
     -- Miku很可爱, 但她只有158cm
     -- 这就是为什么这个值在这
     --print(calcBaseScale(rag))
-
+    
     local mdlScale = calcBaseScale(rag)
     rag.Savee_AdvRagKnockdown_ModelScale = mdlScale
     --rag:SetParent(nil)
@@ -994,7 +996,7 @@ function ENT:Initialize()
 
         --pObj:SetPos(pos)
         --pObj:SetAngles(ang)
-        
+
         local name = rag:GetBoneName(i)
         --pIDToName[pID] = name
         --print(i, name, pID, pObj)
@@ -1008,11 +1010,11 @@ function ENT:Initialize()
         --self:AddToMotionController(pObj)
         --print(rag:GetBoneName(rag:TranslatePhysBoneToBone(i)), pObj:GetMass())
     end
-
-
+    
+    
     -- Miku兼容
     for i = 0, rag:GetBoneCount() - 1 do
-
+        
         local name = rag:GetBoneName(i)
         
         if pObjs[name] then continue end
@@ -1137,11 +1139,27 @@ function ENT:Initialize()
     --own:FollowBone(rag, rag:LookupBone("ValveBiped.Bip01_R_Hand"))
     own:SetNW2Entity("Savee_AdvRagKnockdown_Controller", self)
     
+    -- 这里是崩溃问题的元凶
     -- 看起来是SetMoveParent太早导致的VPhysics.dll抽风(access violation exception)
     -- 在sa_03测试了, 击杀3-4个盾兵并未发生崩溃情况(老方法会崩溃, 参见autorun.lua)
     -- 我就一会点GmosLua的苦逼高中生, C艹这些玩意交给高人解决吧(奈莉看完也4了.jpg)
+    -- 2026/10/12
+    -- 崩溃问题目前被限制在sa_03 处于某些傻逼原因在让NPC进布娃娃状态时必须解绑Parent, 不然在极端条件下会崩溃
+    -- 测试员(小白鼠)详见我的Steam截图, 就在今天, 感谢那个哥们陪我测了n个SMG弹夹
+
+    -- 我就知道你他妈是个叛徒!
+    -- -Merely (Sally.EXE Eye of Three)(希望没打错)
+    local targets = {}
+    --print(#stuffs)
+    for _, ent in ipairs(ents.FindByClassAndParent("*", own)) do
+        if not IsValid(ent) or not ent:CreatedByMap() or ent:IsWeapon() then continue end
+        targets[#targets + 1] = {ent, ent:GetLocalPos(), ent:GetLocalAngles()}
+        ent:SetParent(NULL)
+    end
+
     timer.Simple(tickInterval, function() 
         if not IsValid(self) or not IsValid(rag) then return end
+        --do print("KO2!") self:Remove() rag:Remove() return end
         -- [ARC9] Modern Warfare 2019 飞刀支持
         modifyRagdoll(rag, pObjs, ownVel)
 
@@ -1152,6 +1170,14 @@ function ENT:Initialize()
             own:SetIdealYawAndUpdate(oldIdealYaw)
         end]]
 
+        for _, data in ipairs(targets) do
+            local ent, pos, ang = data[1], data[2], data[3]
+            if not IsValid(ent) then continue end
+            ent:SetParent(own)
+            ent:SetLocalPos(pos)
+            ent:SetLocalAngles(ang)
+        end
+
         self.MotionController_LastRun = CurTime()
         self:StartMotionController()
         self:AddToMotionController(rag:GetPhysicsObject())
@@ -1159,20 +1185,22 @@ function ENT:Initialize()
         self.Initialized = true
     end)
 
+    
     self.m_bOwnNoTarget = own:IsFlagSet(FL_NOTARGET)
-
+    
     self.m_iOwnMoveType = own:GetMoveType()
     self.m_iOwnCollisionGroup = own:GetCollisionGroup()
     --self.m_iOwnSolid = own:GetSolid()
     self.m_entOwnLightOrigin = own:GetLightingOriginEntity()
-
+    self.m_vOwnViewOffset = own:GetViewOffset()
+    
     -- BUG: 市民有这个MOVETYPE的时候会卡列车动画
     -- https://github.com/ValveSoftware/source-sdk-2013/blob/b8cfb12c0e083a2ef5b2f9f9b50f3902fa034474/src/game/server/hl2/npc_citizen17.cpp#L1168
     own:SetMoveType(MOVETYPE_NONE, true)
     own:SetCollisionGroup(CUSTOM_OWNER_COLLISIONGROUP)
     --own:SetSolid(SOLID_NONE)
     own:SetLightingOriginEntity(rag)
-
+    
     own:AddEffects(EF_BONEMERGE)
     own:AddEffects(EF_BONEMERGE_FASTCULL)
     --own:SetNoDraw()
@@ -1191,20 +1219,19 @@ function ENT:Initialize()
 
     --print(self, "钩子", own, rag)
 
-    self.m_vOwnViewOffset = own:GetViewOffset()
-
     local anim = ents.Create("base_anim")
     anim:SetModel(own:GetModel())
     anim:Spawn()
     self.GetupAnimModel = anim
     self:DeleteOnRemove(anim)
-    anim:DeleteOnRemove(self)
+    --anim:DeleteOnRemove(self)
     anim:SetPos(rag:GetPos())
     anim:SetParent(rag)
     anim:SetCollisionGroup(COLLISION_GROUP_IN_VEHICLE)
     anim:SetNoDraw(true)
     anim:SetAutomaticFrameAdvance(true)
 
+    --do print("KO!") self:Remove() rag:Remove() return end
     if not own:IsPlayer() then 
         ---@cast own NPC
         self.UsePlayerAimAnimation = aimBlock
@@ -1216,6 +1243,8 @@ function ENT:Initialize()
         anim:AddEFlags(EFL_KEEP_ON_RECREATE_ENTITIES)
         fakePly:AddEFlags(EFL_KEEP_ON_RECREATE_ENTITIES)
     end
+
+    --do print("KO!") self:Remove() rag:Remove() return end
 
     --own:TakeDamage(10000)
     --[[local debugMdl = ents.Create("base_anim")
@@ -1450,6 +1479,7 @@ function ENT:OnRemove()
     local rag = self:GetRagdoll()
     local own = self:GetOwner()
 
+    self:StopMotionController()
 
     --print(rag)
     if IsValid(own) then
@@ -1477,11 +1507,11 @@ function ENT:OnRemove()
         
         if newPos then
             own:SetPos(newPos, true)
-            own:SetLocalVelocity(vector_origin)
+            own:SetLocalVelocity(vector_origin, true)
             timer.Simple(tickInterval, function()
                 if not IsValid(own) then return end
                 own:SetPos(newPos, true)
-                own:SetLocalVelocity(vector_origin)
+                own:SetLocalVelocity(vector_origin, true)
             end)
         end
 
@@ -1581,9 +1611,7 @@ end
 local bound = Vector(3, 3, 3)
 
 function ENT:Think()
-
-    if self.Removing then return end
-
+    --do return end
     local ct = CurTime()
 
     local own = self:GetOwner()
@@ -1612,6 +1640,8 @@ function ENT:Think()
         end
 
         return true 
+    elseif not self.Initialized then
+        return
     end
     if not IsValid(own) or own:Health() <= 0 or (own:IsPlayer() and not own:Alive()) then 
         self:RemoveSelf() 
@@ -2861,7 +2891,7 @@ end
 
 -- 2026/7/5 这里被改为只处理真正和Tick有关的东西以试图优化
 function ENT:Tick()
-
+    --do return end
     if CLIENT or self.Removing then return end
     
     self.VarCaches = {}
@@ -3213,9 +3243,17 @@ function ENT:Tick()
 
 end
 
+local surfEnabled = getCV("surfing")
+local surfNeedDuck = getCV("surfing_requireducking")
+local surfOnGround = getCV("surfing_requireonground")
+local surfSpdMul = getCV("surfing_speedmult")
+local surfSpdMin = getCV("surfing_minspeed")
+local surfAnyDir = getCV("surfing_anydirection")
 
 -- 这是他妈的神迹!!!!!!!
 function ENT:PhysicsSimulate()
+    --do return end
+
     self.MotionController_LastRun = CurTime()
     if self.PlayingDead then return end
     local own = self:GetOwner()
@@ -3312,7 +3350,8 @@ function ENT:PhysicsSimulate()
 
     local forceMul = (1 + math.max(extrapObjs / 5, 0)) * math.min(1.5, self:GetStamina() / 60)
     for bName, data in pairs(shadowCtrls) do
-        if not pObjs[bName] or not IsValid(pObjs[bName].pObj) then continue end
+        local pObj = pObjs[bName].pObj
+        if not pObjs[bName] or not IsValid(pObj) then continue end
         --if string.find(bName, "UpperArm") then continue end
 
 
@@ -3321,7 +3360,6 @@ function ENT:PhysicsSimulate()
             _,  data.angle = LocalToWorld(vector_origin, data.angle, vector_origin, aea)
         end
 
-        local pObj = pObjs[bName].pObj
         data.secondstoarrive = tickInterval
         local mass = pObj:GetMass()
 
@@ -3336,6 +3374,34 @@ function ENT:PhysicsSimulate()
         
         pObj:ComputeShadowControl(data)
         pObj:Wake()
+    end
+
+    
+    local surfEnabled = getCV(surfEnabled, "Bool")
+    local surfNeedDuck = getCV(surfNeedDuck, "Bool")
+    local surfOnGround = getCV(surfOnGround, "Bool")
+    if not surfEnabled or (surfNeedDuck and not self:HasKeyInput(IN_DUCK)) or (surfOnGround and self.OnGroundState < 0.6) then return end
+
+    local vel = rag:GetVelocity()
+    local surfSpdMin = getCV(surfSpdMin, "Float")
+    if vel:Length() < surfSpdMin then return end
+
+    local surfSpdMul = getCV(surfSpdMul, "Float")
+    local surfAnyDir = getCV(surfAnyDir, "Bool")
+    
+    local finalVel
+    if surfAnyDir then
+        finalVel = vel
+    else
+        local fwd = aea:Forward()
+        finalVel = fwd * math.abs(fwd:Dot(vel))
+    end
+
+    finalVel = finalVel * tickInterval * surfSpdMul
+
+    for i = 0, rag:GetPhysicsObjectCount() - 1 do
+        local pObj = rag:GetPhysicsObjectNum(i)
+        pObj:AddVelocity(finalVel)
     end
 
 end

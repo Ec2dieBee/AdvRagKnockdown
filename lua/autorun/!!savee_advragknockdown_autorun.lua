@@ -36,6 +36,7 @@ local cv_kd_enabled_ply = CreateConVar(cvPrefix .. "enableply", 1, cvTags, "对�
 local cv_kd_enabled_npc = CreateConVar(cvPrefix .. "enablenpc", 1, cvTags, "对NPC启用击倒", 0, 1)
 --local cv_kd_enabled_nextbot = CreateConVar(cvPrefix .. "enablenextbot", 1, cvTags, "对NextBot启用击倒", 0, 1)
 
+
 local cv_kd_playdead_enabled = CreateConVar(cvPrefix .. "playdead_enabled", 1, cvTags, "激活假死", 0, 1)
 local cv_kd_playdead_enabled_ply = CreateConVar(cvPrefix .. "playdead_enableply", 1, cvTags, "对玩家启用假死", 0, 1)
 local cv_kd_playdead_enabled_npc = CreateConVar(cvPrefix .. "playdead_enablenpc", 1, cvTags, "对NPC启用假死", 0, 1)
@@ -51,6 +52,8 @@ local cv_kd_playdead_npc_soundemitchance = CreateConVar(cvPrefix .. "playdead_np
 local cv_kd_playdead_ply_usehook_senddeathnotice = CreateConVar(cvPrefix .. "playdead_ply_usehook_senddeathnotice", 1, cvTags, "在玩家进入假死时调用SendDeathNotice", 0, 1)
 local cv_kd_playdead_npc_usehook_senddeathnotice = CreateConVar(cvPrefix .. "playdead_npc_usehook_senddeathnotice", 1, cvTags, "在NPC假死时调用SendDeathNotice", 0, 1)
 local cv_kd_playdead_npc_reactiontime = CreateConVar(cvPrefix .. "playdead_npc_reactiontime", 5, cvTags, "NPC从进入假死到可以再次行动的时间", 0)
+-- SUDDEN DEATH
+-- - Sonic.EXE The Disaster 2D Remake 
 --local cv_kd_playdead_deathnotice_cooldown = CreateConVar(cvPrefix .. "playdead_deathnotice_cooldown", 5, cvTags, "死亡提示间隔, 适合防止骤死导致的双死亡提示", 0)
 
 local cv_kd_knockdown_plyinveh = CreateConVar(cvPrefix .. "knockdown_playerinvehicle", 1, cvTags, "是否击倒在载具内的玩家(如果玩家在车里则试图让他们离开载具, 如果他们能)", 0, 1)
@@ -77,6 +80,13 @@ local cv_kd_perf_luacode_deltamul = CreateConVar(cvPrefix .. "performance_luacod
 --local cv_kd_agressivecompability = CreateConVar(cvPrefix .. "agressivecompability", 0, cvTags, "通过覆盖其它钩子", 0)
 
 CreateConVar(cvPrefix .. "rag_minmasslimit", 1, cvTags, "设置布娃娃特定部位的最小重量, 并降低布娃娃其它部位的重量. 对于物理部件特多的布娃娃可能会有Bug, 关掉这个会导致特定模型伸手可以飞天", 0, 1)
+
+CreateConVar(cvPrefix .. "surfing", 1, cvTags, "允许滑行等\"机动性动作\", 实际上会在每physicssimulate给布娃娃施加力所以可能会有性能问题", 0, 1)
+CreateConVar(cvPrefix .. "surfing_requireducking", 0, cvTags, "需要按住下蹲键才能进行\"滑行\"", 0, 1)
+CreateConVar(cvPrefix .. "surfing_requireonground", 1, cvTags, "需要在地上才能滑行", 0, 1)
+CreateConVar(cvPrefix .. "surfing_anydirection", 1, cvTags, "允许\"万向滑行\", 否则只会给你前后加速", 0, 1)
+CreateConVar(cvPrefix .. "surfing_speedmult", 0.35, cvTags, "施加的速度百分比 不建议大于0.6", 0)
+CreateConVar(cvPrefix .. "surfing_minspeed", 100, cvTags, "布娃娃总体速度需大于该值才能滑行", 0)
 
 -- FINISHME
 CreateConVar(cvPrefix .. "npc_usehook_createentityragdoll", 0, cvTags, "在NPC被击倒时调用CreateEntityRagdoll", 0, 1)
@@ -498,7 +508,9 @@ for _, str in ipairs(setItOnMyPhys) do
 
     local function override(ent, var, raw, ...)
         local ctrl = getController(ent)
-        if raw or not IsValid(ctrl) then return __undetoured(ent, var, raw, ...) end
+        -- 你怎么敢忘记这么严重的事的
+        -- HOW DARE YOU  - Marzia V.
+        if raw or not IsValid(ctrl) or ent:IsRagdoll() then return __undetoured(ent, var, raw, ...) end
 
         local isPly = ent:IsPlayer()
         local rag = ctrl:GetRagdoll()
@@ -506,7 +518,8 @@ for _, str in ipairs(setItOnMyPhys) do
         for i = 0, rag:GetPhysicsObjectCount() - 1 do
             local pObj = rag:GetPhysicsObjectNum(i)
             if not IsValid(pObj) then continue end
-            pObj[isPly and "ApplyForceCenter" or "SetVelocity"](pObj, var, raw, ...)
+            pObj[isPly and "ApplyForceCenter" or "SetVelocityInstantaneous"](pObj, var, raw, ...)
+            --pObj:ApplyForceCenter(var, raw, ...)
         end
 
         return __undetoured(ent, var, raw, ...)
@@ -630,7 +643,7 @@ funchooks.Add("Entity.EyePos", "Savee_AdvRagKnockdown_Sync", function(ply, raw, 
     
     local cache = ctrl.VarCaches["EyePos"] 
     if lastSysTime_EyePos >= sysTime and cache then 
-        return cache
+        return Vector(cache.x, cache.y, cache.z)
     end
     lastSysTime_EyePos = sysTime + tickInterval
 
@@ -770,7 +783,7 @@ end)
 
 funchooks.Add("Entity.GetPos", "Savee_AdvRagKnockdown_Sync", function(ent, raw, ...)
 
-    if raw or not entTypeCheck(ent) then return __undetoured(ent, raw, ...) end
+    if raw or not entTypeCheck(ent) or ent:IsRagdoll() then return __undetoured(ent, raw, ...) end
     local ctrl = getController(ent)
     if not IsValid(ctrl) then return __undetoured(ent, raw, ...) end
     local rag = ctrl:GetRagdoll()
@@ -804,7 +817,7 @@ funchooks.AddPost("Entity.SetPos", "Savee_AdvRagKnockdown_Sync", function(ply, i
     ctrl:CancelGetUp()
     local pos = inputs[1]
 
-    local oldPos = ply:GetPos()
+    local oldPos = ply:GetPos(true)
     for _, data in pairs(ctrl.RagPObjs) do
         local pObj = data.pObj
         if not data.physBone or not IsValid(pObj) then continue end
@@ -1335,7 +1348,6 @@ if SERVER then
 
     local function doKnockdown(ply, vec, bone, playdead)
         if not cv_kd_enabled:GetBool() then return end
-        
         if not entTypeCheck(ply) then return end
 
         local mdl = ply:GetModel()
@@ -1385,8 +1397,7 @@ if SERVER then
         local rag = ctrl:GetRagdoll()
         if vec and IsValid(rag) then
             if not isvector(vec) then
-                if vec then ctrl.DI_MarkedAsTaken[vec] = true end
-                
+                ctrl.DI_MarkedAsTaken[vec] = true 
                 rag:TakePhysicsDamage(vec) 
                 ctrl:DoBrainDamages(vec, true)
                 return
@@ -1531,13 +1542,15 @@ if SERVER then
 
         
         local hp = ent:Health()
+        --print(dmg, hp)
+        
         if hp <= 0 then return end
-
+        
         if di then
+            local dmg = di:GetDamage()
             local result, should = runThatHook("Savee_AdvRagKnockdown_ShouldKnockdown", ent, di, take)
             if result and not should then return end
 
-            local dmg = di:GetDamage()
 
             if not (cv_kd_knockdown_percentdamage_enabled:GetBool() and dmg / ent:GetMaxHealth() > cv_kd_knockdown_percentdamage:GetFloat()) 
             and (dmg <= cv_kd_knockdown_mindamage:GetFloat() and di:GetDamageForce():Length() < cv_kd_knockdown_mindamageforce:GetFloat()) then return end
@@ -1923,7 +1936,7 @@ if SERVER then
         local ctrl = getController(npc)
         if not IsValid(ctrl) or not ctrl.Initialized then return end
 
-        npc:SetPos(ctrl:GetRagdoll():GetPos(), true)
+        npc:SetPos(ctrl:GetRagdoll():GetPos(true), true)
 
     end)
 
@@ -2012,10 +2025,8 @@ if SERVER then
 
         local atk = di:GetAttacker()
 
-        local ctrl = getController(atk)
-        if IsValid(ctrl) and atk:IsRagdoll() then 
-            return true
-        elseif IsValid(getController(rag)) and rag:IsRagdoll() and atk == di:GetInflictor() and di:IsDamageType(DMG_CRUSH) then
+        --local ctrl = getController(atk)
+        if IsValid(getController(rag)) and rag:IsRagdoll() and atk == di:GetInflictor() and di:IsDamageType(DMG_CRUSH) then
             return true
         end
     
