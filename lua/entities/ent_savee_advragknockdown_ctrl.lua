@@ -1139,12 +1139,12 @@ function ENT:Initialize()
     --own:FollowBone(rag, rag:LookupBone("ValveBiped.Bip01_R_Hand"))
     own:SetNW2Entity("Savee_AdvRagKnockdown_Controller", self)
     
-    -- 这里是崩溃问题的元凶
+    -- 这里是崩溃问题的元凶, 甲级战犯已经不足以形容它的逆天程度
     -- 看起来是SetMoveParent太早导致的VPhysics.dll抽风(access violation exception)
     -- 在sa_03测试了, 击杀3-4个盾兵并未发生崩溃情况(老方法会崩溃, 参见autorun.lua)
     -- 我就一会点GmosLua的苦逼高中生, C艹这些玩意交给高人解决吧(奈莉看完也4了.jpg)
     -- 2026/10/12
-    -- 崩溃问题目前被限制在sa_03 处于某些傻逼原因在让NPC进布娃娃状态时必须解绑Parent, 不然在极端条件下会崩溃
+    -- 崩溃问题目前被限制在sa_03 处于某些傻逼原因在让NPC进布娃娃状态时必须解绑它子级的Parent, 不然在极端条件下会崩溃
     -- 测试员(小白鼠)详见我的Steam截图, 就在今天, 感谢那个哥们陪我测了n个SMG弹夹
 
     -- 我就知道你他妈是个叛徒!
@@ -1224,7 +1224,7 @@ function ENT:Initialize()
     anim:Spawn()
     self.GetupAnimModel = anim
     self:DeleteOnRemove(anim)
-    --anim:DeleteOnRemove(self)
+    anim:DeleteOnRemove(self)
     anim:SetPos(rag:GetPos())
     anim:SetParent(rag)
     anim:SetCollisionGroup(COLLISION_GROUP_IN_VEHICLE)
