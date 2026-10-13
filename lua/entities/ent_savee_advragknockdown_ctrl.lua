@@ -655,7 +655,7 @@ local anims = {
             -- PhysControl Parameter
             -- {startCycle, EndCycle}
             Recover = {0.7, 0.8},
-            Recover_Duck = {0.4, 0.5},
+            Recover_Duck = {0.35, 0.4},
             --pitchmin, pitchmax, 翻转
             Pitch = {-90, 90, true},
             GetUp_Stand = 0.7,
@@ -951,7 +951,8 @@ function ENT:Initialize()
     rag:AddEFlags(EFL_DONTBLOCKLOS)
     rag:SetCollisionGroup(own:IsPlayer() and own:GetCollisionGroup() or COLLISION_GROUP_NPC_ACTOR)
     
-    --if own:IsNPC() then constraint.NoCollide(own, rag, 0, 0, false) end
+    -- 不要去掉这个, 可以治疗染(布)色(娃)体(娃)易位现象
+    if own:IsNPC() then constraint.NoCollide(own, rag, 0, 0, false) end
     
     --modifyRagdoll(rag)
     
@@ -1151,10 +1152,14 @@ function ENT:Initialize()
     -- -Merely (Sally.EXE Eye of Three)(希望没打错)
     local targets = {}
     --print(#stuffs)
-    for _, ent in ipairs(ents.FindByClassAndParent("*", own)) do
-        if not IsValid(ent) or not ent:CreatedByMap() or ent:IsWeapon() then continue end
-        targets[#targets + 1] = {ent, ent:GetLocalPos(), ent:GetLocalAngles()}
-        ent:SetParent(NULL)
+    -- 解释一下为什么, ent:GetChildren()在sa_03屁用没有, 再加上这玩意有小概率返还nil, 以上
+    local children = ents.FindByClassAndParent("*", own)
+    if children then
+        for _, ent in ipairs(children) do
+            if not IsValid(ent) or not ent:CreatedByMap() or ent:IsWeapon() then continue end
+            targets[#targets + 1] = {ent, ent:GetLocalPos(), ent:GetLocalAngles()}
+            ent:SetParent(NULL)
+        end
     end
 
     timer.Simple(tickInterval, function() 
@@ -3247,11 +3252,13 @@ local surfEnabled = getCV("surfing")
 local surfNeedDuck = getCV("surfing_requireducking")
 local surfOnGround = getCV("surfing_requireonground")
 local surfSpdMul = getCV("surfing_speedmult")
+local surfSpdMulMaxSpd = getCV("surfing_speedmult_maxspeed")
 local surfSpdMin = getCV("surfing_minspeed")
+local surfSpdMax = getCV("surfing_maxspeed")
 local surfAnyDir = getCV("surfing_anydirection")
 
 -- 这是他妈的神迹!!!!!!!
-function ENT:PhysicsSimulate()
+function ENT:PhysicsSimulate(_, dt)
     --do return end
 
     self.MotionController_LastRun = CurTime()
@@ -3383,10 +3390,20 @@ function ENT:PhysicsSimulate()
     if not surfEnabled or (surfNeedDuck and not self:HasKeyInput(IN_DUCK)) or (surfOnGround and self.OnGroundState < 0.6) then return end
 
     local vel = rag:GetVelocity()
+    local velLen = vel:Length()
     local surfSpdMin = getCV(surfSpdMin, "Float")
-    if vel:Length() < surfSpdMin then return end
+    if velLen < surfSpdMin then return end
 
+    local surfSpdMulMaxSpd = getCV(surfSpdMulMaxSpd, "Float")
     local surfSpdMul = getCV(surfSpdMul, "Float")
+
+    local surfSpdMax = getCV(surfSpdMax, "Float")
+    if surfSpdMax > surfSpdMin then
+        local lrp = (velLen - surfSpdMin) / (surfSpdMax - surfSpdMin)
+        --print(lrp)
+        surfSpdMul = Lerp(lrp, surfSpdMul, surfSpdMulMaxSpd)
+    end
+
     local surfAnyDir = getCV(surfAnyDir, "Bool")
     
     local finalVel
@@ -3397,7 +3414,7 @@ function ENT:PhysicsSimulate()
         finalVel = fwd * math.abs(fwd:Dot(vel))
     end
 
-    finalVel = finalVel * tickInterval * surfSpdMul
+    finalVel = finalVel * dt * surfSpdMul
 
     for i = 0, rag:GetPhysicsObjectCount() - 1 do
         local pObj = rag:GetPhysicsObjectNum(i)
@@ -3661,6 +3678,7 @@ function ENT:CalcView(ply, pos, ang, fov)
             pos = newPos or pos
             ang = newAng or ang
             fov = newFov or fov
+            --print(1)
         end
         --print(1)
 

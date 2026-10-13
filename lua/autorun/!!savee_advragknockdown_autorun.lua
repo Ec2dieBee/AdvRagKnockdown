@@ -85,8 +85,10 @@ CreateConVar(cvPrefix .. "surfing", 1, cvTags, "允许滑行等\"机动性动作
 CreateConVar(cvPrefix .. "surfing_requireducking", 0, cvTags, "需要按住下蹲键才能进行\"滑行\"", 0, 1)
 CreateConVar(cvPrefix .. "surfing_requireonground", 1, cvTags, "需要在地上才能滑行", 0, 1)
 CreateConVar(cvPrefix .. "surfing_anydirection", 1, cvTags, "允许\"万向滑行\", 否则只会给你前后加速", 0, 1)
-CreateConVar(cvPrefix .. "surfing_speedmult", 0.35, cvTags, "施加的速度百分比 不建议大于0.6", 0)
-CreateConVar(cvPrefix .. "surfing_minspeed", 100, cvTags, "布娃娃总体速度需大于该值才能滑行", 0)
+CreateConVar(cvPrefix .. "surfing_speedmult", 0.75, cvTags, "施加的速度百分比 不建议大于1", 0)
+CreateConVar(cvPrefix .. "surfing_speedmult_maxspeed", 0.35, cvTags, "在达到最大速度时施加的速度百分比 不建议大于0.5", 0)
+CreateConVar(cvPrefix .. "surfing_minspeed", 75, cvTags, "布娃娃总体速度需大于该值才能滑行", 0)
+CreateConVar(cvPrefix .. "surfing_maxspeed", 400, cvTags, "达到最大速度时的速度乘数, 可以拿来做更好的滑行, 设置为低于minspeed的值可以停掉", 0)
 
 -- FINISHME
 CreateConVar(cvPrefix .. "npc_usehook_createentityragdoll", 0, cvTags, "在NPC被击倒时调用CreateEntityRagdoll", 0, 1)
@@ -939,10 +941,12 @@ end)
 
 end)]]
 
+-- ARC9的后坐力解决不了, 所以享受你的90°手动压枪 Slurp Slurp你
 funchooks.Add("CUserCmd.SetViewAngles", "Savee_AdvRagKnockdown_RecoilCorrection", function(cmd, ang, raw, ...)
     if not raw and handlingKnockdownedCmd then
-        local oldAng = cmd:GetViewAngles()
-        local roll = oldAng.r
+        local oldAng = cmd:GetViewAngles(true)
+        --local roll = oldAng.r
+        --print("wdym")
 
         local delta = ang - oldAng
         oldAng:RotateAroundAxis(oldAng:Right(), -delta.p)
@@ -2216,6 +2220,12 @@ else
         --print(deadRag:GetPhysicsObjectNum(1))
     end)
 
+    hook.Add("CreateMove", "Savee_AdvRagKnockdown_StateNotify", function()
+        local ply = LocalPlayer()
+        local ctrl = getController(ply)
+        handlingKnockdownedCmd = IsValid(ctrl)
+    end)
+
     lowpriohook.Add("InputMouseApply", "Savee_AdvRagKnockdown_ViewControl", function(cmd, x, y)
         --print(cmd:GetMouseY(), y)
         local ctrl = getController(LocalPlayer())
@@ -2249,7 +2259,6 @@ else
     lowpriohook.Add("StartCommand", "Savee_AdvRagKnockdown_RagOperation", function(ply, cmd)
         ---@type Entity
         local ctrl = getController(ply)
-        handlingKnockdownedCmd = IsValid(ctrl)
         if not IsValid(ctrl) then oldAimingState = false return end
 
         local consc = ctrl:GetConsciousness()
