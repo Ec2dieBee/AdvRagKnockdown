@@ -2,14 +2,17 @@
 -- 这是一个仿照(和修改)Z-City击倒/布娃娃系统的玩意(但是是TM自己想的, 太痛苦了, 太痛苦了)
 -- 但是我不想让这玩意挂上各种License(保留所有权利.jpg)所以代码是自己写的, 痛苦程度参见实体的抓握部分
 -- 你知道有好的方法能用但是因为你看了答案所以你不再能使用它aughhhhhhhh
+-- 大部分标日期的注释都是当时的想法(喜怒无常.jpg) 可能会过激/偏离本意 敬请谅解
 -- 
+-- ToDo: 一个正经的License
 -- Savee14702 保留一切权利
 -- 如果使用/修改该插件的核心部分, 请获得许可并在发布页面的Credits里加上我的名字(也别拿去商用)
 -- Savee14702 All Rights Reserved.
 -- If used/modified the "core" part of this addon, please ask for my permission and add my name in the "Credits" section(if it has) of your release page(Workshop page I guess)(AND NO COMMERICAL USE!)
 -- 
--- 2026/5/17 这一切全他妈关于速度 你想要留下你的名字就必须快点, 是的这都关于名头, 你第一个弄出来这个名头就是你的
--- @RagKnockdown @MPNKnockdown(RagKnockdown的更全的老版本, 支持ClassicKnockdown(ZSKnockdown), 这是我的命名)
+-- 2026/5/17 这一切全关于速度 你想要留下你的名字就必须快点, 是的这都关于名头, 你第一个弄出来这个名头就是你的
+-- 希望这不会导致什么问题, 毕竟这是80%真的(当然也有那些生不逢时的(悲))
+-- @RagKnockdown @MPNKnockdown(RagKnockdown的更全的老版本(现已遗憾离世(要不然为什么会有RKD())), 支持ClassicKnockdown(类似ZS的击倒因为我只能想到这个)(这是我的称呼))
 -- TODO: SANITY CHECK, 如果有更多需要读CTRL的玩意
 -- 
 -- 2026/8/7: 观前提醒: 本插件完全抄袭了RagKnockdown, 就连名字也一样
@@ -28,6 +31,14 @@ end
 local cvPrefix = "savee_advragknockdown_"
 local cvTags = {FCVAR_ARCHIVE,FCVAR_REPLICATED}
 
+local function CreatePlyNPCConVar(name, defVar, tags, desc, ...)
+    local cv1 = CreateConVar(istable(name) and name[1] .. "_ply_" .. name[2] or (name .. "_ply"), istable(defVar) and defVar[1] or defVar, tags, "[对玩家]" .. desc,  ...)
+    local cv2 = CreateConVar(istable(name) and name[1] .. "_npc_" .. name[2] or (name .. "_npc"), istable(defVar) and defVar[2] or defVar, tags, "[对NPC]" .. desc,  ...)
+
+    return cv1, cv2
+end
+
+
 local debugging = CreateConVar(cvPrefix .. "_debugging", 0, {}, "测试模式, 目前只会在单人模式下在你热重载!!savee_advragknockdown_autorun时顺带热重载另外一个lua", 0, 1)
 
 -- 证明我抄袭了RagKnockdown的有力证据 7.25: 现在没有了 8.7: 你要不看看上面呢
@@ -38,8 +49,7 @@ local cv_kd_enabled_npc = CreateConVar(cvPrefix .. "enablenpc", 1, cvTags, "对N
 
 
 local cv_kd_playdead_enabled = CreateConVar(cvPrefix .. "playdead_enabled", 1, cvTags, "激活假死", 0, 1)
-local cv_kd_playdead_enabled_ply = CreateConVar(cvPrefix .. "playdead_enableply", 1, cvTags, "对玩家启用假死", 0, 1)
-local cv_kd_playdead_enabled_npc = CreateConVar(cvPrefix .. "playdead_enablenpc", 1, cvTags, "对NPC启用假死", 0, 1)
+local cv_kd_playdead_enabled_ply, cv_kd_playdead_enabled_npc = CreatePlyNPCConVar(cvPrefix .. "playdead_enabled", 1, cvTags, "启用假死", 0, 1)
 local cv_kd_playdead_chance_constant = CreateConVar(cvPrefix .. "playdead_chance_constant", 0, cvTags, "假死几率无视血量限制(但几率大小仍受制于伤害)", 0, 1)
 local cv_kd_playdead_chance_min = CreateConVar(cvPrefix .. "playdead_chance_min", 0.25, cvTags, "伤害最小时的假死几率", 0, 1)
 local cv_kd_playdead_chance_max = CreateConVar(cvPrefix .. "playdead_chance_max", 0.95, cvTags, "伤害最大时的假死几率", 0, 1)
@@ -49,9 +59,27 @@ local cv_kd_playdead_chance_usepercent = CreateConVar(cvPrefix .. "playdead_chan
 local cv_kd_playdead_chance_mindmgpercent = CreateConVar(cvPrefix .. "playdead_chance_mindamagepercent", 0.45, cvTags, "假死几率最小时的伤害占生命值百分比", 0, 1)
 local cv_kd_playdead_chance_maxdmgpercent = CreateConVar(cvPrefix .. "playdead_chance_maxdamagepercent", 0.8, cvTags, "假死几率最大时的伤害占生命值百分比", 0, 1)
 local cv_kd_playdead_npc_soundemitchance = CreateConVar(cvPrefix .. "playdead_npc_soundemitchance", 0.1, cvTags, "假死NPC在通常情况下挨打发出受伤声音的几率", 0, 1)
+local cv_kd_playdead_npc_reactiontime = CreateConVar(cvPrefix .. "playdead_npc_reactiontime", 5, cvTags, "NPC从进入假死到可以再次行动的时间", 0)
 local cv_kd_playdead_ply_usehook_senddeathnotice = CreateConVar(cvPrefix .. "playdead_ply_usehook_senddeathnotice", 1, cvTags, "在玩家进入假死时调用SendDeathNotice", 0, 1)
 local cv_kd_playdead_npc_usehook_senddeathnotice = CreateConVar(cvPrefix .. "playdead_npc_usehook_senddeathnotice", 1, cvTags, "在NPC假死时调用SendDeathNotice", 0, 1)
-local cv_kd_playdead_npc_reactiontime = CreateConVar(cvPrefix .. "playdead_npc_reactiontime", 5, cvTags, "NPC从进入假死到可以再次行动的时间", 0)
+
+-- 去用chance, 加这个貌似过于臃肿了(????????)
+--local cv_kd_playdead_ply_candropweapon = CreateConVar(cvPrefix .. "playdead_ply_candropweapon", 0, cvTags, "在玩家进入假死时进行常规掉落武器检测", 0, 1)
+--local cv_kd_playdead_npc_candropweapon = CreateConVar(cvPrefix .. "playdead_npc_candropweapon", 1, cvTags, "在NPC假死时进行常规掉落武器检测", 0, 1)
+
+-- 想不出来咋分 就这样吧
+-- 掉落武器焊手上这点受ZCity启发 不得不承认
+local cv_kd_dropweapon_enabled = CreateConVar(cvPrefix .. "dropweapon_enabled", 1, cvTags, "允许在被击倒时掉落武器", 0, 1)
+CreatePlyNPCConVar(cvPrefix .. "dropweapon_enabled", 1, cvTags, "允许在被击倒时掉落武器", 0, 1)
+
+local cv_kd_dropweapon_chance_ply, cv_kd_dropweapon_chance_npc = CreatePlyNPCConVar({cvPrefix .. "dropweapon", "chance"}, {0, 0.2}, cvTags, "在被击倒时掉落武器的几率", 0, 1)
+local cv_kd_dropweapon_chance_playdead_ply, cv_kd_dropweapon_chance_playdead_npc = CreatePlyNPCConVar({cvPrefix .. "dropweapon", "chance_playdead"}, 0.5, cvTags, "在进入假死时掉落武器的几率", 0, 1)
+CreatePlyNPCConVar({cvPrefix .. "dropweapon", "chance_coma"}, 1, cvTags, "在被击昏时掉落武器的几率", 0, 1)
+CreatePlyNPCConVar({cvPrefix .. "dropweapon", "fulldropchance"}, {0.2, 0.4}, cvTags, "武器完全掉落的几率", 0, 1)
+CreatePlyNPCConVar({cvPrefix .. "dropweapon", "holdstrength"}, {6500, 3500}, cvTags, "掉落武器在手上的约束强度, 请在游戏里使用焊接约束实验最佳数值", 0)
+local cv_kd_dropweapon_npc_pickupdist = CreateConVar(cvPrefix .. "dropweapon_npc_pickupdist", 128, cvTags, "(出于对NPC智商的考量) NPC在苏醒时自动捡起武器的距离", 0)
+local cv_kd_dropweapon_ply_disableweaponpicking = CreateConVar(cvPrefix .. "dropweapon_ply_disableweaponpicking", 1, cvTags, "(出于对玩家智商和观察力的考量) 如果玩家手上掉了武器则不允许玩家捡起任何其他武器", 0, 1)
+
 -- SUDDEN DEATH
 -- - Sonic.EXE The Disaster 2D Remake 
 --local cv_kd_playdead_deathnotice_cooldown = CreateConVar(cvPrefix .. "playdead_deathnotice_cooldown", 5, cvTags, "死亡提示间隔, 适合防止骤死导致的双死亡提示", 0)
@@ -80,6 +108,7 @@ local cv_kd_perf_luacode_deltamul = CreateConVar(cvPrefix .. "performance_luacod
 --local cv_kd_agressivecompability = CreateConVar(cvPrefix .. "agressivecompability", 0, cvTags, "通过覆盖其它钩子", 0)
 
 CreateConVar(cvPrefix .. "rag_minmasslimit", 1, cvTags, "设置布娃娃特定部位的最小重量, 并降低布娃娃其它部位的重量. 对于物理部件特多的布娃娃可能会有Bug, 关掉这个会导致特定模型伸手可以飞天", 0, 1)
+CreateConVar(cvPrefix .. "rag_forcedmass", 0, cvTags, "强制设置布娃娃特定部位的重量, 如果你在用部分二次元模型可以打开", 0, 1)
 
 CreateConVar(cvPrefix .. "surfing", 1, cvTags, "允许滑行等\"机动性动作\", 实际上会在每physicssimulate给布娃娃施加力所以可能会有性能问题", 0, 1)
 CreateConVar(cvPrefix .. "surfing_requireducking", 0, cvTags, "需要按住下蹲键才能进行\"滑行\"", 0, 1)
@@ -363,7 +392,7 @@ for _, str in ipairs(trs) do
             if not IsValid(ctrl) then return __undetoured(data, ...) end
 
             --print(111)
-            data.filter = {ctrl:GetOwner(), ctrl:GetRagdoll()}
+            data.filter = ctrl:GenerateTraceFilter()
             --if SERVER then debug.Trace() end
 
         elseif isfunction(filter) then
@@ -433,7 +462,7 @@ for _, str in ipairs(trs) do
                     start = data.HitPos,
                     endpos = data.HitPos,
                     whitelist = true,
-                    filter = {rag},
+                    filter = rag,
                     getRaw = true,
                     mask = MASK_ALL,
                     mins = Vector(-2, -2, -2),
@@ -845,7 +874,7 @@ funchooks.Add("Entity.ManipulateBoneAngles", "Savee_AdvRagKnockdown_Sync", funct
 
     local ctrl = getController(ply)
     if not IsValid(ctrl) then return __undetoured(ply, ...) end
-    local rag = ctrl:GetRagdoll()
+    local rag = SERVER and ctrl.FakePlyModel or ctrl:GetRagdoll()
 
     rag:ManipulateBoneAngles(...)
 
@@ -862,7 +891,7 @@ funchooks.Add("Entity.ManipulateBonePosition", "Savee_AdvRagKnockdown_Sync", fun
 
     local ctrl = getController(ply)
     if not IsValid(ctrl) then return __undetoured(ply, ...) end
-    local rag = ctrl:GetRagdoll()
+    local rag = SERVER and ctrl.FakePlyModel or ctrl:GetRagdoll()
 
     rag:ManipulateBonePosition(...)
 
@@ -1164,6 +1193,23 @@ hook.Add("Move", "Savee_AdvRagKnockdown_RagMoveOverride", function(ply, mv)
 
 end)
 
+hook.Add("PlayerSwitchWeapon", "Savee_AdvRagKnockdown_Unconsciousness", function(ply, old, new)
+    local ctrl = getController(ply)
+    if not IsValid(ctrl) then return end
+
+    if new:GetClass() == "arkd_nullweapon" then 
+        return false 
+    elseif ctrl:IsUnConsciousness(true) then
+        return true
+    end
+end)
+
+hook.Add("EntityEmitSound", "Savee_AdvRagKnockdown_Unconsciousness", function(data)
+    -- 给AnimModel用, 用以消除布娃娃Sequence内置的B动静
+    local ent = data.Entity
+    if IsValid(ent) and ent:GetNW2Bool("Savee_AdvRagKnockdown_SuppressMySound") then return false end
+end)
+
 local tickCo = coroutine.create(function()
     while true do
         local time = math.max(tickInterval, cv_kd_perf_luacode_nexttick:GetFloat())
@@ -1402,9 +1448,10 @@ if SERVER then
         if vec and IsValid(rag) then
             if not isvector(vec) then
                 ctrl.DI_MarkedAsTaken[vec] = true 
+                --print()
                 rag:TakePhysicsDamage(vec) 
                 ctrl:DoBrainDamages(vec, true)
-                return
+                return ctrl
             end
             
             if not bone then
@@ -1415,7 +1462,7 @@ if SERVER then
             else
                 local bone = rag:TranslateBoneToPhysBone(bone)
                 local pObj = rag:GetPhysicsObjectNum(bone)
-                if not pObj then return end
+                if not pObj then return ctrl end
                 pObj:ApplyForceCenter(vec)
             end
         end
@@ -1574,8 +1621,20 @@ if SERVER then
         --doKnockdown(ent, di)
 
         --do return end
+        local isPly = ent:IsPlayer()
+        local playdead = canPlayDead(ent, di)
+        local ctrl = doKnockdown(ent, di, nil, playdead)
+        if IsValid(ctrl) then
+            local rng = math.Rand(0, 1)
+            if (playdead and 
+            (isPly and cv_kd_dropweapon_chance_playdead_ply or cv_kd_dropweapon_chance_playdead_npc) or (isPly and cv_kd_dropweapon_chance_ply or cv_kd_dropweapon_chance_npc)):GetFloat() > rng then 
+                timer.Simple(tickInterval, function()
+                    if not IsValid(ctrl) then return end
+                    ctrl:CreateDroppedWeapon()
+                end)
+            end
+        end
 
-        doKnockdown(ent, di, nil, canPlayDead(ent, di))
         return true
     end
     
@@ -1586,6 +1645,14 @@ if SERVER then
     -- 甲级战犯, 崩溃主要导致者(对NPC 我猜)
     -- 导致我浪费好几个小时的罪魁祸首
     -- 经验证, 可能是布娃娃移除的时机不对/未能消除所有约束导致
+
+    local function doConstStuffs(ctrl, const, rag)
+        if not IsValid(const) then return end
+        const.CreatedByARKD = true
+        ctrl.ReplacedConsts[#ctrl.ReplacedConsts + 1] = const
+        table.remove(rag.Constraints)
+    end
+
     function Savee_AdvRagKnockdown_ReplaceRagConstraint(ctrl, rag, pObjs, bchild, bparent, minAng, maxAng, fric)
         if not IsValid(rag) or not bchild or not bparent then return end
         if not rag:LookupBone(bparent) or not rag:LookupBone(bchild) then return end
@@ -1645,6 +1712,9 @@ if SERVER then
         --local _, correctedAng = LocalToWorld(vector_origin, Angle(0, 0, -90), vector_origin, lArmP:GetAngles())
         --lHandP:SetAngles(correctedAng)
         local const = constraint.AdvBallsocket(rag, rag, lArm, lHand, wtlLH, nil, 0, 0, minAng.p, minAng.y, minAng.r, maxAng.p, maxAng.y, maxAng.r, fric, fric, fric, 0, 1)
+        local const2 = constraint.Rope(rag, rag, lArm, lHand, wtlLH, vector_origin, 0, 0, 0, 0, "", 1)
+        doConstStuffs(ctrl, const, rag)
+        doConstStuffs(ctrl, const2, rag)
         
         rag:RemoveInternalConstraint(lHand)
 
@@ -1654,13 +1724,8 @@ if SERVER then
         lHandP:SetPos(oldHandPos)
         lHandP:SetAngles(oldHandAng)
 
+        doConstStuffs(ctrl, const, rag)
 
-        if IsValid(const) then 
-            const.CreatedByARKD = true
-            ctrl.ReplacedConsts[#ctrl.ReplacedConsts + 1] = const
-            table.remove(rag.Constraints)
-            --table.insert(ctrl.ReplacedConsts, {lHandP, lArmP, wtlLH, lHandP:GetMass(), lArmP:GetMass()})
-        end
 
 
         --lHandP:SetAngles(oldArmAng)
@@ -1914,6 +1979,7 @@ if SERVER then
     hook.Add("EntityEmitSound", "Savee_AdvRagKnockdown_Unconsciousness", function(data)
         local ent = data.Entity
         local ctrl = getController(ent)
+
         if not IsValid(ctrl) or ctrl.EmittingSound then return end
         if ctrl.NPCState_Unconsciousness 
         or ctrl.PlayDead and math.Rand(0, 1) > cv_kd_playdead_npc_soundemitchance:GetFloat() 
@@ -1947,8 +2013,12 @@ if SERVER then
     hook.Add("PhysgunPickup", "Savee_AdvRagKnockdown_TransStuffIntoRag", function(ply, ent, fucked)
         if fucked or not cv_kd_knockdown_physgun:GetBool() or ply == ent or not entTypeCheck(ent) then return end
         if not hook.Run("PhysgunPickup", ply, ent, true) then return false end
-
-        return not doKnockdownDetection(ent, nil, true)
+        local result = doKnockdownDetection(ent, nil, true)
+        if result then
+            getController(ent).CollisionGroupChangedByPickup = true
+            ent:SetCollisionGroup(COLLISION_GROUP_IN_VEHICLE)
+        end
+        return not result
     end)
     hook.Add("OnPhysgunPickup", "Savee_AdvRagKnockdown_TransGetUpIntoSleep", function(ply, ent)
         local ctrl = getController(ent)
@@ -2006,6 +2076,21 @@ if SERVER then
 
         ctrl:RemoveSelf()
 
+    end)
+
+    hook.Add("PlayerCanPickupWeapon", "Savee_AdvRagKnockdown_NoRepeatedPickup", function(ply, wep)
+        --print(wep)
+        if wep:GetClass() == "arkd_nullweapon" then return true end
+        
+        local ctrl = getController(ply)
+        if not IsValid(ctrl) then return end
+        local dropped = ply:HasWeapon("arkd_nullweapon")
+        --print(dropped)
+
+        if dropped and (cv_kd_dropweapon_ply_disableweaponpicking:GetBool() or (ctrl.DroppedWeapon and wep == ctrl.DroppedWeapon[1])) then 
+            return false 
+        end
+        
     end)
 
     hook.Add("CanPlayerEnterVehicle", "Savee_AdvRagKnockdown_NoVehicle", function(ply)
@@ -2402,12 +2487,16 @@ else
     end)
 
     -- EF_BONEMERGE特有的双绘制
+    -- 添加了对Calyx的支持, 这样你就能看到躺在地上的Calyx(画皮(确信))身上的烂肉了
     SAVEE_ADVRAGKNOCKDOWN_DRAWINGOPAQUE = false
     hook.Add("PreDrawOpaqueRenderables", "Savee_AdvRagKnockdown_FuckEF_BONEMERGE", function()
         SAVEE_ADVRAGKNOCKDOWN_DRAWINGOPAQUE = true
     end)
     hook.Add("PreDrawTranslucentRenderables", "Savee_AdvRagKnockdown_FuckEF_BONEMERGE", function()
         SAVEE_ADVRAGKNOCKDOWN_DRAWINGOPAQUE = false
+    end)
+    hook.Add("PostDrawTranslucentRenderables", "Savee_AdvRagKnockdown_FuckEF_BONEMERGE", function()
+        SAVEE_ADVRAGKNOCKDOWN_DRAWINGOPAQUE = true
     end)
 
     -- 给"健康系统"的显示, 毕竟这玩意不是ZCity所以东西都往简单了来(其实和原版没太大关系, 除了体力这个东西)
@@ -2463,6 +2552,11 @@ else
     
     end)
 
+    -- 滚木枪有什么看的必要吗(恼)
+    hook.Add("HUDWeaponPickedUp", "Savee_AdvRagKnockdown_SuppressNotice", function(wep)
+        if wep:GetClass() == "arkd_nullweapon" then return true end
+    end)
+
     --[[funchooks.Add("Entity.SetBoneMatrix", "Savee_AdvRagKnockdown_TPIKSupport", function(ply, i, mtx, ...)
         if ply:IsRagdoll() then return __undetoured(ply, i, mtx, ...) end
         local ctrl = getController(ply)
@@ -2492,15 +2586,16 @@ else
     }
 
     funchooks.Add("Entity.DrawModel", "Savee_AdvRagKnockdown_SuspendInsufficientDraw", function(ent, fl, ...)
-        
+        if ent:IsRagdoll() then return __undetoured(ent, fl, ...) end
+    
         --do return __undetoured(ent, fl, ...) end
-
+    
         local own = ent
         
         if ent:IsWeapon() then
             own = ent:GetOwner()
         end
-
+        
         local ctrl = getController(own)
         if not IsValid(own) or not IsValid(ctrl) then return __undetoured(ent, fl, ...) end
         if ent:GetNoDraw() then return end
@@ -2510,7 +2605,7 @@ else
         local renderGroup = ent:GetRenderGroup()
         if opaques[renderGroup] and not SAVEE_ADVRAGKNOCKDOWN_DRAWINGOPAQUE then return end
         if not opaques[renderGroup] and renderGroup ~= RENDERGROUP_BOTH and SAVEE_ADVRAGKNOCKDOWN_DRAWINGOPAQUE then return end
-
+        
         -- 我猜需要有人验证一下
         if own:IsPlayer() then return __undetoured(ent, fl, ...) end
 
@@ -2527,8 +2622,11 @@ else
 
         render.SetLightingOrigin(pos)
 
+        --rag:SetRenderMode(RENDERMODE_TRANSTEXTURE)
+        --own:SetRenderMode(RENDERMODE_TRANSTEXTURE)
         local result = {__undetoured(ent, fl, ...)}
         rag:SetPos(oldPos)
+        --render.SetBlend(1)
 
         return unpack(result)
     end)
