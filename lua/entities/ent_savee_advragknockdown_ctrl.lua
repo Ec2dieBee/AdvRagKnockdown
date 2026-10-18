@@ -25,8 +25,9 @@
 AddCSLuaFile()
 local getController = Savee_AdvRagKnockdown_GetController
 
+local VBoxInstalled = ConVarExists("vbox_contact_damping") or file.Size("bin/win64/vphysics.dll", "BASE_PATH") > 1800000
+
 local cvPrefix = "savee_advragknockdown_"
-local VBoxInstalled = ConVarExists("vbox_contact_damping")
 local isSP = game.SinglePlayer()
 local hookTable = hook.GetTable()
 
@@ -803,10 +804,6 @@ local function modifyRagdoll(rag, pObjs, ownVel)
         --local pObj = data.pObj
         local pObj = rag:GetPhysicsObjectNum(i)
         local bone = rag:GetBoneName((rag:TranslatePhysBoneToBone(i)))
-
-        if armBones[bone] and VBoxInstalled then
-            pObj:SetDamping(0, 250)
-        end
         
         --print(bone)
         
@@ -2817,7 +2814,7 @@ function ENT:DealWithAnims(isPly, aimingWeapon, noArm, wepHT, isMeleeHT)
         --print(lArmDeltaMax)
         if self.NextSetRArmDelta <= ct then
 
-            local finalVar = math.Approach(oldRArm, rArmDeltaMax, 0.2)
+            local finalVar = math.Approach(oldRArm, rArmDeltaMax, 0.35)
 
             --print(0)
             self.CanSetRArmDelta = nonFirearm or finalVar ~= 0
@@ -3334,7 +3331,7 @@ function ENT:Tick()
                 lWinch:Remove()
             end
 
-            local spd = 4500 --self.LHand_GrabbingWorld and 4500 or 2000
+            local spd = vBoxInstalled and 13500 or 4500 --self.LHand_GrabbingWorld and 4500 or 2000
             --if not isSP then spd = spd * 2 end
 
             if not IsValid(lWinch) then
@@ -3388,7 +3385,7 @@ function ENT:Tick()
                 rWinch:Remove()
             end
 
-            local spd = 4500 --self.RHand_GrabbingWorld and 4500 or 2000
+            local spd = vBoxInstalled and 13500 or 4500 --self.RHand_GrabbingWorld and 4500 or 2000
             --if not isSP then spd = spd * 2 end
 
             if not IsValid(rWinch) then

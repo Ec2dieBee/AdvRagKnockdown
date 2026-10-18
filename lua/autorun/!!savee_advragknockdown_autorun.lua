@@ -987,14 +987,17 @@ funchooks.Add("CUserCmd.SetViewAngles", "Savee_AdvRagKnockdown_RecoilCorrection"
     return __undetoured(cmd, ang, raw, ...)
 end)
 
+local handling
 -- 武器支持
 hook.Add("EntityFireBullets", "Savee_AdvRagKnockdown_HitScanMod", function(ent, bullet, fucked)
     --local wep = ent
-    if fucked then return end
+    if handling then return end
     if ent:IsWeapon() then ent = ent:GetOwner() end
     
     if SERVER then
-        local result = hook.Run("EntityFireBullets", ent, bullet, true)
+        handling = true
+        local result = hook.Run("EntityFireBullets", ent, bullet)
+        handling = false
         if not result and isbool(result) then return false end
 
         local cb = bullet.Callback
@@ -1034,6 +1037,7 @@ hook.Add("EntityFireBullets", "Savee_AdvRagKnockdown_HitScanMod", function(ent, 
                 btr.HitBox = rag.Savee_AdvRagKnockdown_HitBoxes[bone] or btr.HitBox
                 btr.HitGroup = hitGroup or btr.HitGroup --own:GetHitBoxHitGroup(rag.Savee_AdvRagKnockdown_HitBoxes[bone], 0)
                 btr.Entity = own
+                --print("WTF")
             end
             --di:SetDamage(114514)
             --cb(attacker, tr, di)
@@ -1047,8 +1051,10 @@ hook.Add("EntityFireBullets", "Savee_AdvRagKnockdown_HitScanMod", function(ent, 
                 result = cb(attacker, btr, di)
                 --print(1, di, btr.Entity)
             end
-
             --local ent = btr.Entity
+            --[[if ent == btr.Entity then
+                print("?2")
+            end]]
             if SERVER and cv_kd_damagecalc_usetakedamage:GetBool() and IsValid(rag) then
                 if rag:IsRagdoll() then
                     Savee_AdvRagKnockdown_DoRagDamage(rag, di, di:GetDamage() > 0)
@@ -1135,10 +1141,18 @@ hook.Add("EntityFireBullets", "Savee_AdvRagKnockdown_HitScanMod", function(ent, 
         filter = {ent, rag},
         mask = MASK_SHOT,
     })]]
+    --[[local headPos = rag:GetBoneMatrix(rag:LookupBone("ValveBiped.Bip01_Head1") or 1)
+    local headPos, headAng = headPos:GetTranslation(), headPos:GetAngles()
+    headPos = LocalToWorld(Vector(5, -5, 0), angle_zero, headPos, headAng)]]
+    --print(headPos)
+
+    local vel = rag:GetVelocity() * tickInterval * 2
+    --print(vel)
+    --print(tickInterval, fra)
     local aimDir = ctrl:GetAimEyeAngles():Forward()
     local aimTr = util.TraceLine({
-        start = eyePos + aimDir * 15,
-        endpos = eyePos + aimDir * 65536,
+        start = eyePos + aimDir * 12 + vel * (ctrl.LowPose and 2 or 1),
+        endpos = eyePos + aimDir * 65536 + vel,
         filter = ent,
         mask = MASK_SHOT,
         getRaw = true,
@@ -1147,10 +1161,10 @@ hook.Add("EntityFireBullets", "Savee_AdvRagKnockdown_HitScanMod", function(ent, 
     --print(aimTr.Entity)
     -- 确认你不是机器人
     -- 有效防止MTM Neutrino Cannon 把你囊死的问题
-    if not IsValid(bullet.IgnoreEntity) and rHD <= 0.15 and (aimTr.Entity ~= rag or whitelistedBones[rag:GetBoneName(rag:TranslatePhysBoneToBone(aimTr.PhysicsBone) or -1)]) then
+    if not IsValid(bullet.IgnoreEntity) and rHD <= 0.2 and (aimTr.Entity ~= rag or whitelistedBones[rag:GetBoneName(rag:TranslatePhysBoneToBone(aimTr.PhysicsBone) or -1)]) then
         bullet.IgnoreEntity = ctrl:GetRagdoll()
-    --else
-        --print(IsValid(bullet.IgnoreEntity), rHD, rag:GetBoneName(rag:TranslatePhysBoneToBone(aimTr.PhysicsBone)), aimTr.Entity ~= rag)
+    --[[else
+        print(bullet.IgnoreEntity, rHD, rag:GetBoneName(rag:TranslatePhysBoneToBone(aimTr.PhysicsBone)), aimTr.Entity ~= rag)]]
     end
 
     return true --__undetoured(ent, bullet)
