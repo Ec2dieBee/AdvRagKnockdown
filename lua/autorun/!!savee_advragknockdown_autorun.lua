@@ -86,6 +86,8 @@ local cv_kd_dropweapon_ply_disableweaponpicking = CreateConVar(cvPrefix .. "drop
 
 local cv_kd_knockdown_plyinveh = CreateConVar(cvPrefix .. "knockdown_playerinvehicle", 1, cvTags, "是否击倒在载具内的玩家(如果玩家在车里则试图让他们离开载具, 如果他们能)", 0, 1)
 
+local cv_kd_rag_modifyleg = CreateConVar(cvPrefix .. "rag_modifyleg", 1, cvTags, "给滑铲准备的, 允许修改腿部约束以执行更加特殊的动作", 0, 1)
+
 local cv_kd_knockdown_defaultbehaviour = CreateConVar(cvPrefix .. "knockdown_defaultbehaviour", 1, cvTags, "启用默认的击倒检测, 如果你有什么东西对击倒检测做了彻底改变可以关掉", 0, 1)
 local cv_kd_knockdown_percentdamage_enabled = CreateConVar(cvPrefix .. "knockdown_percentdamage_enabled", 1, cvTags, "允许在伤害大于玩家最大生命百分比时击倒玩家", 0, 1)
 local cv_kd_knockdown_percentdamage = CreateConVar(cvPrefix .. "knockdown_percentdamage", 0.5, cvTags, "击倒玩家所需的伤害百分比, 请注意 如果其它条件满足也是可以击倒的", 0, 1)
@@ -170,6 +172,12 @@ end)]]
 
 local isSP = game.SinglePlayer()
 local hookTable = hook.GetTable()
+
+-- 允许你进行战术行为
+local allowedKnockdownActions = {
+    "sliding"
+}
+local allowedActions_Key = table.Flip(allowedKnockdownActions)
 
 -- 防止你射的正爽的时候子弹从你的眼睛打到你的胳膊
 local whitelistedBones = {
@@ -1244,7 +1252,13 @@ local tickCo = coroutine.create(function()
             local own = ent:GetOwner()
             if not IsValid(ent:GetRagdoll()) or not IsValid(own) or own:IsMarkedForDeletion() or own:Health() <= 0 then ent:RemoveSelf() continue end
 
-            ent:Tick()
+            -- 操你妈我受不了了
+            -- 说真的要不是AI天天在那说这个玩意我都快把它忘了
+            -- (SpecialAction: 啊对对对)
+            local succ, err = pcall(ent.Tick, ent)
+            if not succ then
+                ErrorNoHalt("[AdvRagKnockdown] " .. err .. "\n")
+            end
             if own:IsPlayer() then continue end
 
             amnt = amnt + 1
@@ -1452,7 +1466,6 @@ if SERVER then
                 ctrl.LastStand = true
             end
             ctrl:Spawn()
-            ctrl.PreventPhysAttackTill = CurTime() + 0.05
             -- 防误触
             ctrl.NextGetUp = CurTime() + 0.5
         end
@@ -1481,6 +1494,7 @@ if SERVER then
             end
         end
 
+        return ctrl
     end
 
     local mvBlacklist = {
@@ -1706,8 +1720,8 @@ if SERVER then
         local armPos, armAng = parentMtx:GetTranslation(), parentMtx:GetAngles()
         local handPos, handAng = childMtx:GetTranslation(), childMtx:GetAngles()
 
-        SafeRemoveEntityDelayed(ent, tickInterval)
-        --ent:Remove()
+        --SafeRemoveEntityDelayed(ent, tickInterval)
+        ent:Remove()
     
         lArmP:SetPos(armPos)
         lArmP:SetAngles(armAng)
@@ -1726,9 +1740,11 @@ if SERVER then
         --local _, correctedAng = LocalToWorld(vector_origin, Angle(0, 0, -90), vector_origin, lArmP:GetAngles())
         --lHandP:SetAngles(correctedAng)
         local const = constraint.AdvBallsocket(rag, rag, lArm, lHand, wtlLH, nil, 0, 0, minAng.p, minAng.y, minAng.r, maxAng.p, maxAng.y, maxAng.r, fric, fric, fric, 0, 1)
-        local const2 = constraint.Rope(rag, rag, lArm, lHand, wtlLH, vector_origin, 0, 0, 0, 0, "", 1)
         doConstStuffs(ctrl, const, rag)
-        doConstStuffs(ctrl, const2, rag)
+
+        -- 叛徒, btw绳子救不了VPhysics
+        --local const2 = constraint.Rope(rag, rag, lArm, lHand, wtlLH, vector_origin, 0, 0, 0, 0, "", 1)
+        --doConstStuffs(ctrl, const2, rag)
         
         rag:RemoveInternalConstraint(lHand)
 
@@ -1738,7 +1754,8 @@ if SERVER then
         lHandP:SetPos(oldHandPos)
         lHandP:SetAngles(oldHandAng)
 
-        doConstStuffs(ctrl, const, rag)
+        -- ?
+        --doConstStuffs(ctrl, const, rag)
 
 
 
@@ -1771,6 +1788,14 @@ if SERVER then
         --Savee_AdvRagKnockdown_ReplaceRagConstraint(ctrl, rag, pObjs, "ValveBiped.Bip01_L_UpperArm", "ValveBiped.Bip01_Spine2", -angMax, angMax, 0)
         --Savee_AdvRagKnockdown_ReplaceRagConstraint(ctrl, rag, pObjs, "ValveBiped.Bip01_R_UpperArm", "ValveBiped.Bip01_Spine2", -angMax, angMax, 0)
 
+        if not cv_kd_rag_modifyleg:GetBool() then return end
+
+        angMax = Angle(75, 60, 60)
+        local angMin = Angle(-40, -60, -100)
+        Savee_AdvRagKnockdown_ReplaceRagConstraint(ctrl, rag, pObjs, "ValveBiped.Bip01_L_Thigh", "ValveBiped.Bip01_Pelvis", angMin, angMax, 0)
+        Savee_AdvRagKnockdown_ReplaceRagConstraint(ctrl, rag, pObjs, "ValveBiped.Bip01_R_Thigh", "ValveBiped.Bip01_Pelvis", angMin, angMax, 0)
+            
+
     end
 
     ---@diagnostic disable-next-line: gmod-net-read-write-order-mismatch
@@ -1780,10 +1805,16 @@ if SERVER then
 
         ---@type Entity
         local ctrl = p.Savee_AdvRagKnockdown_Controller
+        -- 击倒我
         if type == 0 then
             if IsValid(ctrl) then ctrl:CancelGetUp() return end
-            doKnockdown(p)
-            -- 击倒我
+            local ctrl = doKnockdown(p)
+            if not IsValid(ctrl) then return end
+            local actionStr = net.ReadString()
+
+            if actionStr and allowedActions_Key[actionStr] then
+                ctrl:AddStatus(actionStr)
+            end
         elseif IsValid(ctrl) then
             if type == 1 then
                 local n = net.ReadUInt(2)
@@ -2259,13 +2290,21 @@ else
 
     local oldAimingState
 
-    concommand.Add(cvPrefix .. "doknockdown", function()
+    local kdCMD = cvPrefix .. "doknockdown"
+    local allowedKnockdownActions_AutoComplete = {}
+
+    for i = 1, #allowedKnockdownActions do
+        allowedKnockdownActions_AutoComplete[i] = kdCMD .. " " .. allowedKnockdownActions[i]
+    end
+
+    concommand.Add(kdCMD, function(_, _, _, req)
         if not cv_kd_enabled:GetBool() then return end
         local lp = LocalPlayer()
         local ctrl = getController(lp)
 
         net.Start("Savee_AdvRagKnockdown_OperationMsg", true)
         net.WriteUInt(0, BITCOUNT_OPERATIONINFO)
+        if not IsValid(ctrl) then net.WriteString(req) end -- 带宽?
         net.SendToServer()
 
         --print(ctrl, clcv_ctrl_aim:GetInt() < 1)
@@ -2273,6 +2312,8 @@ else
 
         timer.Simple(isSP and 0 or lp:Ping() / 800, function() sendAimingMsg(1) oldAimingState = true end)
     
+    end, function()
+        return allowedKnockdownActions_AutoComplete
     end)
 
     concommand.Add(cvPrefix .. "toggleaimweapon", function()
@@ -2612,7 +2653,7 @@ else
         
         local ctrl = getController(own)
         if not IsValid(own) or not IsValid(ctrl) then return __undetoured(ent, fl, ...) end
-        if ent:GetNoDraw() then return end
+        if ent:GetNoDraw() then return __undetoured(ent, fl, ...) end
         
         local rag = ctrl:GetRagdoll()
 

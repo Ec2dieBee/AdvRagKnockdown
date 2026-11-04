@@ -25,6 +25,7 @@
 AddCSLuaFile()
 local getController = Savee_AdvRagKnockdown_GetController
 
+-- btw 我试过VBox了, 大概是因为用了PhysicsSimulate导致几乎完全兼容VBox
 local VBoxInstalled = ConVarExists("vbox_contact_damping") or file.Size("bin/win64/vphysics.dll", "BASE_PATH") > 1800000
 
 local cvPrefix = "savee_advragknockdown_"
@@ -54,6 +55,13 @@ local noArmVal = 55
     ["models/weapons/c_scifiv.mdl"] = true,
     ["models/weapons/cstrike/c_mach_m249para.mdl"] = true,
 }]]
+
+local util = util
+local math = math
+local GetConVar = GetConVar
+local IsValid = IsValid
+local rawget = rawget
+local rawset = rawset
 
 -- 奈莉特供
 local boneWhiteList = {
@@ -574,6 +582,66 @@ local function getCVPrefixedAlt(cv1, cv2, st, ply)
     return getCV(cv1 .. (ply and "_ply_" or "_npc_") .. cv2, st)
 end
 
+-- 哇哦, 头一次啊(并非)
+if SERVER then
+    Savee_AdvRagKnockdown_StatusTables = {}
+    local path = "entities/ent_savee_advragknockdown_ctrl/status/"
+
+    -- 逐级引用, 因为我们拥有美丽的baseclass
+    local function getVar(self, k)
+        local stuff = rawget(self, k)
+        if stuff then return stuff end
+
+        local baseClass = rawget(self, "BaseClass")
+        if istable(baseClass) then return getVar(baseClass, k) end
+    end
+
+    local meta = {
+        __index = function(self, k)
+            local ctrl = rawget(self, "Controller")
+            return IsValid(ctrl) and ctrl.ActiveStatus[rawget(self, "__id")][k] or getVar(self, k)
+        end,
+        __newindex = function(self, k, v)
+            local ctrl = rawget(self, "Controller")
+            if not IsValid(ctrl) then
+                rawset(self, k, v)
+                return
+            end
+            ctrl.ActiveStatus[rawget(self, "__id")][k] = v
+        end
+    }
+
+    -- 苍蝇
+    local flies = file.Find(path .. "*.lua", "LUA")
+    local tbl = Savee_AdvRagKnockdown_StatusTables
+
+    for _, status in ipairs(flies) do
+        local name = string.sub(status, 0, -5)
+        local content = file.Read(path .. status, "LUA")
+        local code = "local meta = ... local STATUS = {} setmetatable(STATUS, meta) STATUS.__id = \"" .. name .. "\" " .. content .. " return STATUS"
+        local result = CompileString(code, "Savee_ARKD_IncStatus_" .. name, false)
+
+        if isfunction(result) then
+            tbl[name] = result(meta)
+            print("[ARKD] 加载了状态 " .. name)
+        else
+            ErrorNoHaltWithStack("[ARKD] 加载" .. name .. "时遇到问题\n" .. result)
+        end
+    end
+
+    -- 父子级关系
+    for name, status in pairs(tbl) do
+        local base = status.Base
+        base = tbl[base] and base or "status_base"
+        if name == status.Base then continue end
+
+        tbl[name] = table.Inherit(status, tbl[base])
+    end
+    --file.Read("fileName", gamePath)
+end
+
+
+
 ENT.Type = "anim"
 ENT.Base = "base_anim"
 ENT.PrintName = "很像ZCity的击倒"
@@ -700,7 +768,7 @@ local function hasAnim(anim, seq)
     return anim:LookupSequence(seq) ~= -1
 end
 
-if SERVER and false then
+if SERVER then
     timer.Simple(tickInterval, function()
 
 
@@ -717,7 +785,7 @@ if SERVER and false then
                 StartCycle = 0.1,
                 Recover = {0.9, 1},
                 Recover_Duck = {0.8, 0.9},
-                Pitch = {-90, 90},
+                Pitch = {-90, 90, true},
                 GetUp_Stand = 0.8,
                 GetUp_Duck = 0.5,
             }
@@ -731,7 +799,7 @@ if SERVER and false then
                 StartCycle = 0.1,
                 Recover = {0.9, 1},
                 Recover_Duck = {0.8, 0.9},
-                Pitch = {-90, 90, true},
+                Pitch = {-90, 45},
                 GetUp_Stand = 0.8,
                 GetUp_Duck = 0.5,
             }
@@ -749,9 +817,7 @@ function ENT:SpawnFunction(ply, tr, ClassName)
 
     --if ( !tr.Hit ) then return end
     --print("?")
-    if IsValid(ply.Savee_AdvRagKnockdown_Controller) then return end
-
-    local SpawnPos = tr.HitPos
+    if IsValid(getController(ply)) then return end
     
     local ent = ents.Create(ClassName)
     ent:SetOwner(ply)
@@ -795,9 +861,13 @@ local function modifyRagdoll(rag, pObjs, ownVel)
         pObj:SetVelocityInstantaneous(oldVels[i] + ownVel)
     end
 
-    if not getCV("rag_minmasslimit", "Bool") then return end
-    
     local objCount = rag:GetPhysicsObjectCount()
+    if IsValid(ctrl) then 
+        ctrl.PreventPhysAttackTill = CurTime() + (objCount - 14) / 2
+    end
+
+    if not getCV("rag_minmasslimit", "Bool") then return end
+
 
     --for bone, data in pairs(pObjs) do
     for i = 0, objCount - 1 do
@@ -817,8 +887,6 @@ local function modifyRagdoll(rag, pObjs, ownVel)
         end
         
     end
-
-    if ctrl then ctrl.PreventPhysAttackTill = CurTime() + (objCount - 14) / 2 end
     
 end
 
@@ -847,6 +915,54 @@ function ENT:SetCachedVar(key, var, time, forced)
     self.CacheTimers[key] = ct + time
 end
 
+-- 这里采用一种很傻逼的逻辑进行运算
+-- 大概就是 一个表反复用
+-- 这是我能想到的唯一能让你看到(semi-)热加载(还不用刷一堆实体+换图后这状态还在)的办法了
+local function setupAndRun(self, name, id, ...)
+    local own = self:GetOwner()
+    local rag = self:GetRagdoll()
+
+    local tbl = Savee_AdvRagKnockdown_StatusTables
+    local status = tbl[name]
+    if not status then return end
+    ---@cast status table
+
+    rawset(status, "Controller", self)
+    rawset(status, "Controller_Owner", own)
+    rawset(status, "Controller_Ragdoll", rag)
+
+    local result, b, c, d, e, f = status[id](status, ...)
+
+    rawset(status, "Controller", nil)
+    rawset(status, "Controller_Owner", nil)
+    rawset(status, "Controller_Ragdoll", nil)
+
+    return result, b, c, d, e, f
+end
+
+ENT.ActiveStatus = {}
+
+function ENT:AddStatus(name)
+    local tbl = Savee_AdvRagKnockdown_StatusTables
+    if not tbl[name] or self.ActiveStatus[name] ~= nil then return end
+    
+    self.ActiveStatus[name] = {}
+    setupAndRun(self, name, "OnApply")
+end
+function ENT:RunStatus(id, ...)
+    -- 完全就是钩子
+    local result, b, c, d, e, f
+
+    for name, run in pairs(self.ActiveStatus) do
+        if not run then continue end
+
+        result, b, c, d, e, f = setupAndRun(self, name, id, ...)
+
+        if result ~= nil then break end
+    end
+
+    return result, b, c, d, e, f
+end
 
 function ENT:RemoveSelf(killOwner)
     if CLIENT then return end
@@ -1141,16 +1257,17 @@ function ENT:Initialize()
     self:SetLocalPos(Vector(0, 0, 2))
     self:SetTransmitWithParent(true)
 
-    local ownPos = own:GetPos()
+    local ownPos = own:GetPos(true)
     local bound = Vector(2, 2, 2)
     local groundTr = util.TraceHull({
-        start = ownPos,
+        start = ownPos + Vector(0, 0, 5),
         endpos = ownPos - Vector(0, 0, 38 * mdlScale),
         filter = {rag, own},
         maxs = bound * mdlScale,
         mins = -bound * mdlScale,
     })
-    self.OnGroundState = 1.2 - (ownPos.z - groundTr.HitPos.z) / 64
+    --print(ownPos.z - groundTr.HitPos.z)
+    self.OnGroundState = math.max(0, 1 - (ownPos.z - groundTr.HitPos.z) / 32)
 
     --own:FollowBone(rag, rag:LookupBone("ValveBiped.Bip01_R_Hand"))
     own:SetNW2Entity("Savee_AdvRagKnockdown_Controller", self)
@@ -1162,6 +1279,9 @@ function ENT:Initialize()
     -- 2026/10/12
     -- 崩溃问题目前被限制在sa_03 处于某些傻逼原因在让NPC进布娃娃状态时必须解绑它子级的Parent, 不然在极端条件下会崩溃
     -- 测试员(小白鼠)详见我的Steam截图, 就在今天, 感谢那个哥们陪我测了n个SMG弹夹
+    -- 2026/11/2
+    -- 为了响应的快一点(1tick也是tick.jpg), 我把SetMoveParent立刻执行了
+    -- 我个人推测是NPC本身没问题(本身不用VPhysics, 用的是什么OBB), 但是它的那些子级(那些使用VPhysics的)就惨了z
 
     -- 我就知道你他妈是个叛徒!
     -- -Merely (Sally.EXE Eye of Three)(希望没打错)
@@ -1176,15 +1296,16 @@ function ENT:Initialize()
             ent:SetParent(NULL)
         end
     end
-
+    
+    -- BEHOLD, THE POWER OF AN ANGEL!
+    own:SetMoveParent(rag)
     timer.Simple(tickInterval, function() 
         if not IsValid(self) or not IsValid(rag) then return end
         --do print("KO2!") self:Remove() rag:Remove() return end
         -- [ARC9] Modern Warfare 2019 飞刀支持
         modifyRagdoll(rag, pObjs, ownVel)
 
-        --local oldIdealYaw = own:GetAngles().y
-        own:SetMoveParent(rag)
+        --local oldIdealYaw = own:GetAngles().y  
 
         --[[if own:IsNPC() then
             own:SetIdealYawAndUpdate(oldIdealYaw)
@@ -1203,6 +1324,8 @@ function ENT:Initialize()
         self:AddToMotionController(rag:GetPhysicsObject())
         
         self.Initialized = true
+        self:RunStatus("RagdollInitialized", rag, pObjs, ownVel)
+
     end)
 
     
@@ -1325,8 +1448,10 @@ function ENT:AddKeyInput(key)
 end
 function ENT:HasKeyInput(key)
     local own = self:GetOwner()
-    --own:ChatPrint(tostring(self.KeyInputs[key]))
-    --own:ChatPrint(tostring(own:KeyDown(key)))
+    
+    local statusOverride = self:RunStatus("KeyOverride", key)
+    if isbool(statusOverride) then return statusOverride end
+
     return self.KeyInputs[key] or (own:IsPlayer() and own:KeyDown(key))
 end
 
@@ -1338,6 +1463,9 @@ function ENT:TryGetUp(animTbl, forced)
 
     local var, canGetUp = runThatHook("Savee_AdvRagKnockdown_OnGetUp", own, self, animTbl)
     if var and not canGetUp then return end
+    
+    local statusOverride = self:RunStatus("CanGetUp")
+    if isbool(statusOverride) and not statusOverride then return end
 
     local spine2 = rag:LookupBone("ValveBiped.Bip01_Spine2") or 1
 
@@ -1447,6 +1575,9 @@ function ENT:ShouldGetUp()
     if self:IsUnConsciousness() or stamina < 45 then return false end
 
     if self.GettingUp then
+        local statusOverride = self:RunStatus("ShouldGetUp")
+        if isbool(statusOverride) and not statusOverride then return false end
+
         local bp1 = (self.GettingUp_SyncingToOwner and self or self.GetupAnimModel):GetBonePosition(0)
         local bp2 = rag:GetBonePosition(0)
         local dist = bp1:Distance(bp2)
@@ -1698,6 +1829,9 @@ function ENT:Think()
         self:RemoveSelf() 
         return
     end
+
+    self:RunStatus("Think")
+
     local generatedFilter = self:GenerateTraceFilter()
     local pObjs = self.RagPObjs
     
@@ -1746,22 +1880,25 @@ function ENT:Think()
             self:PlayDeadThink(own, ct)
         elseif not self.PlayingDead then
             --print(self:GetRArmDelta())
-            local goal = own:GetCurWaypointPos()
-            if goal == vector_origin then goal = own:GetGoalPos() end
+            local curWP = own:GetCurWaypointPos()
+            local goal = curWP
+            if goal == vector_origin then goal = self:GetCachedVar("NPC_MoveGoal") end
 
             local hasGoal = self:GetCachedVar("NPC_HasMoveGoal", goal ~= vector_origin)
         
-            if hasGoal then
+            if hasGoal and own:GetPos():Distance(goal) > 64 then
                 self.Caches.NPC_LastGoalUpdate = ct --hasGoal and goal
-                self:SetCachedVar("NPC_MoveGoal", goal, 1)
-                self:SetCachedVar("NPC_HasMoveGoal", hasGoal, math.random(2, 4))
+                if curWP ~= vector_origin then
+                    self:SetCachedVar("NPC_MoveGoal", curWP, 1)
+                end
+                self:SetCachedVar("NPC_HasMoveGoal", true, math.random(2, 4))
 
                 local noArm = noAimHTs[IsValid(wep) and wep:GetHoldType() or ""]
-                self:SetCachedVar("NPC_ShouldRHand", self:GetCachedVar("NPC_ShouldRHand", not self:GetCachedVar("NPC_ShouldRHand")), noArm and 0.8 or 0.4)
+                self:SetCachedVar("NPC_ShouldRHand", self:GetCachedVar("NPC_ShouldRHand", not self:GetCachedVar("NPC_ShouldRHand")), (noArm and 0.8 or 0.4) * math.Rand(0.9, 1.5))
             else
-                self:SetCachedVar("NPC_HasMoveGoal", hasGoal, 0.1)
+                self:SetCachedVar("NPC_HasMoveGoal", false, 0.1)
+                self:SetCachedVar("NPC_CanGetUpVar", math.random(100) >= 85, math.Rand(3, 7))
             end
-            self:SetCachedVar("NPC_CanGetUpVar", math.random(100) >= 85, math.Rand(3, 7))
 
             self.LowPose = hasGoal
 
@@ -2279,6 +2416,57 @@ function ENT:ClearDroppedWeapon(pickup)
     self.DroppedWeapon = nil
 end
 
+-- 使用更数学(和更昂贵)的手段生成NPC抓握地点
+-- 依旧老朋友余弦定理, 再加个正弦定理
+---@param armPos Vector 需要使用的Upperarm根骨Pos
+function ENT:GenerateNPCGrabbingPos(armPos)
+    if not armPos then ErrorNoHalt("牢大, 我胳膊呢? \n") print(debug.Trace()) end
+
+    ---@type NPC
+    local own = self:GetOwner()
+    local rag = self:GetRagdoll()
+    --if not IsValid(own) or not own:IsNPC() then return end -- 你是傻逼吗?
+
+    local mdlScale = rag.Savee_AdvRagKnockdown_ModelScale
+    local armlen = 22 * mdlScale
+    
+    local nextPos = self:GetCachedVar("NPC_MoveGoal")
+    local dist = armPos:Distance(nextPos)
+    debugoverlay.Box(nextPos + Vector(0, 0, 5) , -bound, bound, 0.2, Color(57, 197, 192))
+    if dist <= armlen then
+        return nextPos + Vector(0, 0, 5) 
+    end
+
+    local groundPos = util.QuickTrace(armPos, Vector(0, 0, -armlen), rag).HitPos
+    
+    local height, distGround = math.abs((armPos - groundPos).z), groundPos:Distance(nextPos)
+    --print(height)
+    
+    local assistRad = math.acos(
+        math.Clamp((height ^ 2 + distGround ^ 2 - dist ^ 2) / (2 * height * distGround), -1, 1)
+    )
+    local fuckingCircle = armlen / math.sin(assistRad)
+    local anotherRad = math.asin(math.Clamp(height / fuckingCircle, -1, 1))
+
+    -- 这是最后要求的角
+    -- 应该会有什么其它东西帮忙
+    local final = 180 - math.deg(anotherRad) - math.deg(assistRad)
+    local y = (nextPos - own:EyePos()):Angle()
+    y = (y - (nextPos - armPos):Angle()).y
+
+    local aea = self:GetAimEyeAngles()
+
+    --print(final, math.deg(anotherRad), math.deg(assistRad))
+    local _, ang = LocalToWorld(vector_origin, Angle(180 - final, -y, 0), armPos, aea)
+    debugoverlay.BoxAngles(armPos, vector_origin, Vector(0, 0, armlen), ang, 0.2, Color(57, 197, 192))
+
+    local tr = util.QuickTrace(armPos, ang:Up() * armlen, rag)
+    local finalPos = tr.HitPos - Vector(0, 0, 1)
+    debugoverlay.Box(finalPos , -bound, bound, 0.2, Color(57, 197, 192))
+    --print(tr.Entity)
+
+    return finalPos
+end
 
 local shadowDatas = {
     --"maxspeed",
@@ -2289,23 +2477,7 @@ local shadowDampDatas = {
     "maxangulardamp",
 }
 
-local infos = {
-    "AmmoType",
-    "Attacker",
-    "BaseDamage",
-    "Damage",
-    "DamageBonus",
-    "DamageCustom",
-    "DamageForce",
-    "DamagePosition",
-    "DamageType",
-    "Inflictor",
-    "MaxDamage",
-    "ReportedPosition",
-    "Weapon",
-}
-
-local legDelta = 35
+local legDelta = 25
 
 -- 这样你就不必来来回回
 
@@ -2315,10 +2487,10 @@ local torsoang, torsoangdamp, torsospd, torsospddamp, torsodampfactor, torsodelt
 --local torsomovespd, torsomovespddamp, torsomovespddelta = 450, 450, 0.2
 local headang, headangdamp, headspd, headspddamp, headdampfactor, headdelta = 30, 30, 0, 0, 1, 0.1
 local handang, handangdamp, handspd, handspddamp, handdampfactor, handdelta = 350, 250, 20, 0, 0.8, 0.08
-local handaimang, handaimangdamp, handaimspd, handaimspddamp, handaimdampfactor, handaimdelta = 225, 135, 20, 0, 0.8, isSP and 0.05 or 0.08
-local armaimang, armaimangdamp, armaimspd, armaimspddamp, armaimdampfactor, armaimdelta = 225, 280, 20, 0, 0.8, 0.1
-local pelvisang, pelvisangdamp, pelvisspd, pelvisspddamp, pelvisdampfactor, pelvisdelta = 0, 10, 0, 0, 0.8, 0.15
-local legang, legangdamp, legspd, legspddamp, legsdampfactor, legsdelta = 10, 5, 0, 0, 0.5, 0.2
+local handaimang, handaimangdamp, handaimspd, handaimspddamp, handaimdampfactor, handaimdelta = 225, 235, 20, 0, 0.8, isSP and 0.05 or 0.08
+local armaimang, armaimangdamp, armaimspd, armaimspddamp, armaimdampfactor, armaimdelta = 225, 380, 20, 0, 0.8, 0.1
+local pelvisang, pelvisangdamp, pelvisspd, pelvisspddamp, pelvisdampfactor, pelvisdelta = 50, 10, 0, 0, 0.8, 0.15
+local legang, legangdamp, legspd, legspddamp, legsdampfactor, legsdelta = 10, 25, 0, 0, 0.5, 0.2
 
 torsodelta = torsodelta * deltamul
 headdelta = headdelta * deltamul
@@ -2411,10 +2583,11 @@ function ENT:DealWithAnims(isPly, aimingWeapon, noArm, wepHT, isMeleeHT)
 
     -- PhysicsObject在ISleep状态下会草飞你的PhysicsSimulate
     rag:GetPhysicsObject():Wake()
+    if self:RunStatus("DoAnimationSystem", pObjs, shadowCtrls) then return end
+
     
     ---@type PhysObj
     local torso = pObjs["ValveBiped.Bip01_Spine2"].pObj
-
 
     local eyeatt = rag:LookupAttachment("eyes")
     local eyepos = own:EyePos()
@@ -2438,7 +2611,9 @@ function ENT:DealWithAnims(isPly, aimingWeapon, noArm, wepHT, isMeleeHT)
 
         --local mass = pelvis:GetMass()
         --pelvis:EnableMotion(false)
+        
         local angFace = Angle(0, 90, 0)
+    
         shadowCtrls["ValveBiped.Bip01_Pelvis"] = {
             angle = angFace,
             maxspeed = pelvisspd,
@@ -2851,7 +3026,7 @@ function ENT:DealWithAnims(isPly, aimingWeapon, noArm, wepHT, isMeleeHT)
 
             local dir = not isPly and (caches.NPC_MoveGoal - eyepos):GetNormalized() or aea:Forward()
             local ang = Angle(-5, 0, 90)
-            local targetPos = eyepos + (dir * 30 - eyeang:Up() * (isPly and 2 or 10 + caches.NPC_MoveGoal:Distance(eyepos) / 10)) * mdlScale
+            local targetPos = isPly and eyepos + (dir * 30 - eyeang:Up() * 2) * mdlScale or self:GenerateNPCGrabbingPos(ragLUArmPos)
 
             if not IsValid(self.LHand_Grabbing) then
                 local angLUpperArm, angLForeArm = calcBasicArmIK(ragLUArmPos, targetPos, var + exRotate, Angle(0, 0, -90), aea)
@@ -2908,17 +3083,13 @@ function ENT:DealWithAnims(isPly, aimingWeapon, noArm, wepHT, isMeleeHT)
         local forward, right = aea:Forward() * 30 * mdlScale, aea:Right() * 5 * mdlScale
         local pos = eyepos + forward
 
-        if not isPly then
-            pos = pos - Vector(0, 0, 35)
-        end
-
         if lhand then
 
             self:SetLArmDelta(math.Approach(self:GetLArmDelta(), 1, 0.2))
-            local ang = Angle(-5, 0, 90)
+            local ang = Angle(-25, 0, 90)
 
             if not IsValid(self.LHand_Grabbing) then
-                local angLUpperArm, angLForeArm = calcBasicArmIK(ragLUArmPos, pos - right, var + exRotate, Angle(0, 0, -90), aea)
+                local angLUpperArm, angLForeArm = calcBasicArmIK(ragLUArmPos, isPly and pos - right or self:GenerateNPCGrabbingPos(ragLUArmPos), var + exRotate, Angle(0, 0, -90), aea)
 
                 shadowCtrls["ValveBiped.Bip01_L_UpperArm"] = {
                     --secondstoarrive = tickInterval / 10,
@@ -2959,10 +3130,10 @@ function ENT:DealWithAnims(isPly, aimingWeapon, noArm, wepHT, isMeleeHT)
             }
         end
         if rhand then
-            local ang = Angle(-5, 0, (noArm or isMeleeHT) and 90 or 180)
+            local ang = Angle(-25, 0, (noArm or isMeleeHT) and 90 or 180)
             
             if not IsValid(self.RHand_Grabbing) then
-                local angRUpperArm, angRForeArm = calcBasicArmIK(ragRUArmPos, pos + right, -var + exRotate, Angle(0, 0, -90), aea)
+                local angRUpperArm, angRForeArm = calcBasicArmIK(ragRUArmPos, isPly and pos + right or self:GenerateNPCGrabbingPos(ragRUArmPos), -var + exRotate, Angle(0, 0, -90), aea)
 
                 shadowCtrls["ValveBiped.Bip01_R_UpperArm"] = {
                     --secondstoarrive = tickInterval / 10,
@@ -3059,6 +3230,8 @@ function ENT:DealWithAnims(isPly, aimingWeapon, noArm, wepHT, isMeleeHT)
 
     end
 
+    self:RunStatus("OnAnimationCaculated", pObjs, shadowCtrls)
+
     self.ShadowCtrlData = shadowCtrls
 
 end
@@ -3091,6 +3264,8 @@ function ENT:Tick()
     elseif not own:IsEffectActive(EF_BONEMERGE) then
         own:AddEffects(EF_BONEMERGE)
     end
+
+    self:RunStatus("Tick")
 
     local aea = self:GetAimEyeAngles()
 
@@ -3153,7 +3328,6 @@ function ENT:Tick()
     -- 因为太几把占性能了所以挪走了
     -- 貌似能在踹翻30个联合军的情况下省下~30fps
     if self.NextCalcAnim <= ct then
-        
         self:DealWithAnims(isPly, aimingWeapon, noArm, wepHT, isMeleeHT)
 
         self.NextCalcAnim = ct + (isPly and 0.1 or 0.3)
@@ -3331,13 +3505,13 @@ function ENT:Tick()
                 lWinch:Remove()
             end
 
-            local spd = vBoxInstalled and 13500 or 4500 --self.LHand_GrabbingWorld and 4500 or 2000
+            local spd = VBoxInstalled and 9000 or 4500 --self.LHand_GrabbingWorld and 4500 or 2000
             --if not isSP then spd = spd * 2 end
 
             if not IsValid(lWinch) then
                 local data = self.LHand_GrabbingData
                 -- Z-City的参数(给我的感觉), 和我进去爬的时候的手部位置几乎一致所以我猜这就是他们爬行的参数
-                lWinch = constraint.Elastic(rag, data.ent, pObjs["ValveBiped.Bip01_Spine2"].id, data.pObjID, (Vector((self.LowPose and isPly) and 0 or -6, 6, 2) - aea:Forward()), data.wtlPos, spd, 250, 1, "", 0, true, Color(255, 255, 255, 0))
+                lWinch = constraint.Elastic(rag, data.ent, pObjs["ValveBiped.Bip01_Spine2"].id, data.pObjID, (Vector(self.LowPose and (isPly and 0 or 3) or -6, 6, 2) - aea:Forward()), data.wtlPos, spd, 250, 1, "", 0, true, Color(255, 255, 255, 0))
                 if lWinch then 
                     const:DeleteOnRemove(lWinch)
                 end
@@ -3385,12 +3559,12 @@ function ENT:Tick()
                 rWinch:Remove()
             end
 
-            local spd = vBoxInstalled and 13500 or 4500 --self.RHand_GrabbingWorld and 4500 or 2000
+            local spd = VBoxInstalled and 9000 or 4500 --self.RHand_GrabbingWorld and 4500 or 2000
             --if not isSP then spd = spd * 2 end
 
             if not IsValid(rWinch) then
                 local data = self.RHand_GrabbingData
-                rWinch = constraint.Elastic(rag, data.ent, pObjs["ValveBiped.Bip01_Spine2"].id, data.pObjID, (Vector((self.LowPose and isPly) and 0 or -6, 6, -2) - aea:Forward()), data.wtlPos, spd, 250, 1, "", 0, true, Color(255, 255, 255, 0))
+                rWinch = constraint.Elastic(rag, data.ent, pObjs["ValveBiped.Bip01_Spine2"].id, data.pObjID, (Vector(self.LowPose and (isPly and 0 or 3) or -6, 6, -2) - aea:Forward()), data.wtlPos, spd, 250, 1, "", 0, true, Color(255, 255, 255, 0))
                 if rWinch then constR:DeleteOnRemove(rWinch) end
 
                 self.RHand_Grabbing_Winch = rWinch
@@ -3445,7 +3619,7 @@ function ENT:PhysicsSimulate(_, dt)
     --do return end
 
     self.MotionController_LastRun = CurTime()
-    if self.PlayingDead then return end
+    if self.PlayingDead or self:RunStatus("PhysicsSimulate", _, dt) then return end
     local own = self:GetOwner()
 
     local rag = self:GetRagdoll()
@@ -3548,7 +3722,7 @@ function ENT:PhysicsSimulate(_, dt)
 
         --print(bName, data.angle)
         if not data.noCorrection and data.angle then
-            _,  data.angle = LocalToWorld(vector_origin, data.angle, vector_origin, aea)
+            _, data.angle = LocalToWorld(vector_origin, data.angle, vector_origin, aea)
         end
 
         data.secondstoarrive = tickInterval
@@ -3576,7 +3750,9 @@ function ENT:PhysicsSimulate(_, dt)
     local vel = rag:GetVelocity()
     local velLen = vel:Length()
     local surfSpdMin = getCV(surfSpdMin, "Float")
-    if velLen < surfSpdMin then return end
+
+    local statusOverride = self:RunStatus("PhysicsSimulate_CanSurf", vel, velLen)
+    if not statusOverride and (isbool(statusOverride) or velLen < surfSpdMin) then return end
 
     local surfSpdMulMaxSpd = getCV(surfSpdMulMaxSpd, "Float")
     local surfSpdMul = getCV(surfSpdMul, "Float")
@@ -3598,6 +3774,10 @@ function ENT:PhysicsSimulate(_, dt)
         finalVel = fwd * math.abs(fwd:Dot(vel))
     end
 
+    local surf = self:RunStatus("PhysicsSimulate_Surfing", surfSpdMul)
+    if isbool(surf) and not surf then return end
+    
+    surfSpdMul = surf or surfSpdMul
     finalVel = finalVel * dt * surfSpdMul
 
     for i = 0, rag:GetPhysicsObjectCount() - 1 do

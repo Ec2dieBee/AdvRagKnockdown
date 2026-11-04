@@ -15,9 +15,10 @@ NPCs Can Be knockdowned
 1. **Devs of Z-City** - **Main Inspiration** of this addon
 2. **TriggerMiku** - Playtester, lua sorting, useful advices on code
 3. **r_nil** - Useful advices on code, some codefixes in his fork
-4. **The Creator of Selected Action Maps** - For the pressure testing(also cool campaign) maps(sa_01), and providing special crashing conditions(sa_03)
-5. **Ragdoll Resizer** - For letting me know the existance of PhysObj:GetMeshConvexes()
-6. **Savee14702** - The dumb who tried write this all his own without using ANY of Z-City's code(seems I did that, wow)
+4. **My Classmate(唐诗有个梦(Yes that's not true name))** - Stuffs about math formulas and supporting(Yes, the IK stuff and grabbing pos caculations)
+5. **The Creator of Selected Action Maps** - For the pressure testing(also cool campaign) maps(sa_01), and providing special crashing conditions(sa_03)
+6. **Ragdoll Resizer** - For letting me know the existance of PhysObj:GetMeshConvexes()
+7. **Savee14702** - The dumb who tried write this all his own without using ANY of Z-City's code(seems I did that, wow)
  
 ---
 # And also
