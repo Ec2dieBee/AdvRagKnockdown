@@ -13,11 +13,18 @@
 -- 2026/5/17 这一切全关于速度 你想要留下你的名字就必须快点, 是的这都关于名头, 你第一个弄出来这个名头就是你的
 -- 希望这不会导致什么问题, 毕竟这是80%真的(当然也有那些生不逢时的(悲))
 -- @RagKnockdown @MPNKnockdown(RagKnockdown的更全的老版本(现已遗憾离世(要不然为什么会有RKD())), 支持ClassicKnockdown(类似ZS的击倒因为我只能想到这个)(这是我的称呼))
--- TODO: SANITY CHECK, 如果有更多需要读CTRL的玩意
+-- Done?: SANITY CHECK, 如果有更多需要读CTRL的玩意
 -- 
 -- 2026/8/7: 观前提醒: 本插件完全抄袭了RagKnockdown, 就连名字也一样
 
 -- 感谢RNil的指导(和泌阳的hook.lua让我知道了文件名优先级越先被加载hook越先被加载)
+-- 
+-- 2026/11/6: 我在迁移RKD神秘功能的时候发现这玩意成功入围VJBase不兼容(貌似是总体不兼容?)名单
+-- 所以
+-- ToDo: VJBase 兼容
+-- Breaks melee attacks, causes NPCs to stand backup after dying, and many other issues, avoid completely.
+-- 破坏近战攻击, 导致NPC在死后起身(?), 和一堆其他问题(对, 崩溃, 还有你, MoveParent, 你被解雇了), 必须避开
+-- (BVVD RKD(和我其他插件)考虑这么周全感觉会导致选择困难症和太长不看)
 
 AddCSLuaFile()
 
@@ -36,6 +43,22 @@ local function CreatePlyNPCConVar(name, defVar, tags, desc, ...)
     local cv2 = CreateConVar(istable(name) and name[1] .. "_npc_" .. name[2] or (name .. "_npc"), istable(defVar) and defVar[2] or defVar, tags, "[对NPC]" .. desc,  ...)
 
     return cv1, cv2
+end
+
+local function getCV(cv, st)
+    cv = isstring(cv) and GetConVar(cvPrefix .. cv) or cv
+    if not cv then return end
+    if st then
+        cv = cv["Get" .. st](cv)
+    end
+
+    return cv
+end
+local function getCVPrefixed(cv, st, ply)
+    return getCV(cv .. (ply and "_ply" or "_npc"), st)
+end
+local function getCVPrefixedAlt(cv1, cv2, st, ply)
+    return getCV(cv1 .. (ply and "_ply_" or "_npc_") .. cv2, st)
 end
 
 
@@ -94,7 +117,14 @@ local cv_kd_knockdown_percentdamage = CreateConVar(cvPrefix .. "knockdown_percen
 local cv_kd_knockdown_mindamage = CreateConVar(cvPrefix .. "knockdown_mindamage", 10, cvTags, "击倒玩家最小所需的伤害, 请注意 如果力度足够也是可以击倒的", 0)
 local cv_kd_knockdown_mindamageforce = CreateConVar(cvPrefix .. "knockdown_mindamageforce", 3500, cvTags, "击倒玩家最小所需的伤害力度, 请注意 如果伤害足够也是可以击倒的", 0)
 local cv_kd_knockdown_physgun = CreateConVar(cvPrefix .. "knockdown_physicsgun", 0, cvTags, "允许使用物理枪捡起可击倒实体", 0, 1)
-local cv_kd_knockdown_gravgun = CreateConVar(cvPrefix .. "knockdown_gravitygun", 0, cvTags, "允许使用重力枪推倒实体", 0, 1)
+local cv_kd_knockdown_gravgun = CreateConVar(cvPrefix .. "knockdown_gravitygun", 0, cvTags, "允许使用重力枪推倒实体(如果游戏允许)", 0, 1)
+
+local cv_kd_knockdown_velocity = CreateConVar(cvPrefix .. "knockdown_velocity", 1, cvTags, "[总开关] 在实体速度过高时击倒实体", 0, 1)
+local cv_kd_knockdown_velocity_ply, cv_kd_knockdown_velocity_npc = CreatePlyNPCConVar(cvPrefix .. "knockdown_velocity", 1, cvTags, "在速度过高时击倒实体", 0, 1)
+local cv_kd_knockdown_velocity_vehicle = CreateConVar(cvPrefix .. "knockdown_velocity_exitvehicle", 1, cvTags, "在跳车时进行速度击倒检测", 0, 1)
+local cv_kd_knockdown_velocity_ground = CreateConVar(cvPrefix .. "knockdown_velocity_ground", 1, cvTags, "在地面时进行速度击倒检测", 0, 1)
+local cv_kd_knockdown_velocity_air = CreateConVar(cvPrefix .. "knockdown_velocity_air", 1, cvTags, "在空中时进行速度击倒检测", 0, 1)
+local cv_kd_knockdown_velocity_val = CreateConVar(cvPrefix .. "knockdown_velocity_var", 2000, cvTags, "在实体速度超过这个时击倒实体", 0)
 
 local cv_kd_damagecalc_usetakedamage = CreateConVar(cvPrefix .. "knockdown_usetakedamage", 0, cvTags, "使用TakeDamageInfo并更进一步修改BulletTable, 可能会出现没受到伤害且力度不够时仍被击倒的情况", 0, 1)
 
@@ -105,7 +135,7 @@ local cv_kd_ctrl_luacode_dontclampeyeang = CreateConVar(cvPrefix .. "control_lua
 local cv_kd_perf_luacode_nexttick = CreateConVar(cvPrefix .. "performance_luacode_nexttick", 0.01, cvTags, "[性能][代码相关] 下次统一运行控制器Tick()的时间, 这个值越大布娃娃效果越拉跨(但性能会好点我猜), 不建议大于0.03", 0)
 local cv_kd_perf_luacode_ctrlamnt = CreateConVar(cvPrefix .. "performance_luacode_maxprocessedcontroller", 10, cvTags, "[性能][代码相关] 一tick间隔(或者是你设置的tick间隔)处理的控制器数量, 设置为0则无上限", 0)
 local cv_kd_perf_luacode_tracelevel = CreateConVar(cvPrefix .. "performance_luacode_tracelevel", 4, cvTags, "[性能][代码相关] 查找Trace的层数, 越高越\"广泛\", 操作涉及到布娃娃的面越广, 但有潜在的性能消耗(低于4的话工具枪无法选择布娃娃)", 0)
-local cv_kd_perf_luacode_deltamul = CreateConVar(cvPrefix .. "performance_luacode_deltamul", 1, cvTags, "[性能][代码相关][需重启] ShadowControl运算中delta的乘数, 把它调低对安装了VPhysics-Box3D的人有帮助 不要让它为0, 推荐值为0.5", 0)
+local cv_kd_perf_luacode_deltamul = CreateConVar(cvPrefix .. "performance_luacode_deltamul", 1, cvTags, "[性能][代码相关][需重启] ShadowControl运算中delta的乘数, 把它调低会增大肢体移动速度(但过低有问题) 不要让它为0, 如果你在用其它的物理引擎建议把这个设为0.5", 0)
 --local cv_kd_perf_luacode_usecustomdraw = CreateConVar(cvPrefix .. "performance_luacode_usecustomdraw", 1, cvTags, "[性能][代码相关] TBA", 0, 1)
 --local cv_kd_agressivecompability = CreateConVar(cvPrefix .. "agressivecompability", 0, cvTags, "通过覆盖其它钩子", 0)
 
@@ -209,7 +239,7 @@ local meleeHTs = {
     ["knife"] = true,
 }
 
--- ToDo: 是否需要将NW换成NW2?
+-- Done: 是否需要将NW换成NW2? 换成NW2了
 
 --[[SAVEE_ADVRAGKNOCKDOWN_LIMBS = {
     "ValveBiped.Bip01_L_Hand",
@@ -1565,7 +1595,7 @@ if SERVER then
         local bone = rag:TranslatePhysBoneToBone(tr.PhysicsBone)
         local hitGroup = rag.Savee_AdvRagKnockdown_HitGroups[bone]
 
-        -- ToDo: 伤害计算优化
+        -- Done: 伤害计算优化
         --print(atk:IsWorld())
         --print(atk, (atk:IsWorld() or (atk:CreatedByMap() and atk:GetMoveType() ~= MOVETYPE_VPHYSICS) or atk:IsRagdoll()) and (di:IsDamageType(DMG_CRUSH) or di:IsDamageType(DMG_FALL)))
         if atk:IsWorld() or (IsValid(atk) and (atk:GetSolid() == SOLID_VPHYSICS and (atk:IsRagdoll() or atk:CreatedByMap()))) then
@@ -2056,9 +2086,13 @@ if SERVER then
     end)
 
     hook.Add("PhysgunPickup", "Savee_AdvRagKnockdown_TransStuffIntoRag", function(ply, ent, fucked)
-        if fucked or not cv_kd_knockdown_physgun:GetBool() or ply == ent or not entTypeCheck(ent) then return end
+        if fucked or ply == ent or not entTypeCheck(ent) then return end
+
+        local ctrl = IsValid(getController(ent))
+        if not cv_kd_knockdown_physgun:GetBool() and not ctrl then return end
+
         if not hook.Run("PhysgunPickup", ply, ent, true) then return false end
-        local result = doKnockdownDetection(ent, nil, true)
+        local result = ctrl or doKnockdownDetection(ent, nil, true)
         if result then
             getController(ent).CollisionGroupChangedByPickup = true
             ent:SetCollisionGroup(COLLISION_GROUP_IN_VEHICLE)
@@ -2677,6 +2711,7 @@ else
 
         render.SetLightingOrigin(pos)
 
+        --own:SetupBones()
         --rag:SetRenderMode(RENDERMODE_TRANSTEXTURE)
         --own:SetRenderMode(RENDERMODE_TRANSTEXTURE)
         local result = {__undetoured(ent, fl, ...)}

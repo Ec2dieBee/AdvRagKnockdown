@@ -1,4 +1,4 @@
--- ToDo..?: 写一个布娃娃综控Addon 然后把它塞进去
+-- Done:  这个东西本身成为了综控 --写一个布娃娃综控Addon 然后把它塞进去
 -- 也许这个就是综控了?
 -- 很显然这会和Ragknockdown冲突, 但是目前先做进阶起身(是的 你不能在Ragknockdown里创飞一个正在起来的人, 这不好)
 -- Done: NPC兼容
@@ -15,7 +15,7 @@
 -- 
 -- ToDo: 清清不用的值
 -- 
--- ToDo: 加个装死检测, 用你从其它代码学到的"Cache"
+-- Done: 加个装死检测, 用你从其它代码学到的"Cache"
 ---警告! 这并不意味着你可以躲在电视后面听The Great Punishment然后拿霰弹枪射击**某个很大的猫科生物**
 -- Done: 引入类似Z-City的健康系统, (意识(能否控制武器/控制力), 体力(最大控制力), 我猜这两个够用了(坐等其他人搬运Z-City健康系统.jpg))
 -- Done: 让Miku可以舒适的射击(G🐀神秘更新让JiggleBones强制替代了PhysBone 26/8/2 不知道怎么又改回去了 26/8/19 疑似插件导致🐹🐹🐹)
@@ -62,6 +62,14 @@ local GetConVar = GetConVar
 local IsValid = IsValid
 local rawget = rawget
 local rawset = rawset
+
+local blackListedSCHED
+if SERVER then -- 傻逼代码
+    blackListedSCHED = {
+        [SCHED_HIDE_AND_RELOAD] = true,
+        [SCHED_RELOAD] = true,
+    }
+end
 
 -- 奈莉特供
 local boneWhiteList = {
@@ -143,29 +151,35 @@ local originalAnimBones = {
     --["ValveBiped.Bip01_R_Clavicle"] = 1,
     ["ValveBiped.Bip01_L_UpperArm"] = {
         forceMul = 7,
-        deltaAng = Angle()
+        deltaAng = Angle(),
+        Arm = true
     },
     ["ValveBiped.Bip01_L_Forearm"] = {
         forceMul = 7,
-        deltaAng = Angle()
+        deltaAng = Angle(),
+        Arm = true
     },
     ["ValveBiped.Bip01_R_UpperArm"] = {
         forceMul = 7,
-        deltaAng = Angle()
+        deltaAng = Angle(),
+        Arm = true
     },
     ["ValveBiped.Bip01_R_Forearm"] = {
         forceMul = 7,
-        deltaAng = Angle(0, 0, 0)
+        deltaAng = Angle(0, 0, 0),
+        Arm = true
     },
     ["ValveBiped.Bip01_L_Hand"] = {
         forceMul = 7,
         dampForceMul = 5,
-        deltaAng = Angle()
+        deltaAng = Angle(),
+        Arm = true
     },
     ["ValveBiped.Bip01_R_Hand"] = {
         forceMul = 7,
         dampForceMul = 5,
-        deltaAng = Angle(0, 0, 0)
+        deltaAng = Angle(0, 0, 0),
+        Arm = true
     },
 }
 
@@ -682,7 +696,7 @@ ENT.MotionController_LastRun = -1
 ENT.CacheTimers = {}
 ENT.Caches = {
     NPC_MoveGoal = Vector(),
-    NPC_HasMoveGoal = Vector(),
+    NPC_HasMoveGoal = false,
     NPC_LastGoalUpdate = -1,
     NPC_LastCrawl = -1,
     NPC_ShouldRHand = false,
@@ -1352,7 +1366,7 @@ function ENT:Initialize()
     local aimBlock = false --own:IsNPC() and aimBlackListedNPCClass[own:GetClass()]
     self.OwnerIsACitizen = aimBlackListedNPCClass[own:GetClass()]
 
-    local fakePly = ents.Create("base_anim")
+    local fakePly = ents.Create("ent_savee_advragknockdown_notanim")
     fakePly:SetModel(aimBlock and "models/player/breen.mdl" or own:GetModel())
     fakePly:Spawn()
     fakePly:SetNW2Bool("Savee_AdvRagKnockdown_SuppressMySound", true)
@@ -1366,7 +1380,7 @@ function ENT:Initialize()
 
     --print(self, "钩子", own, rag)
 
-    local anim = ents.Create("base_anim")
+    local anim = ents.Create("ent_savee_advragknockdown_notanim")
     anim:SetModel(own:GetModel())
     anim:Spawn()
     self.GetupAnimModel = anim
@@ -1509,7 +1523,7 @@ function ENT:TryGetUp(animTbl, forced)
     ang:Normalize()
 
     
-    -- TODO: 射线检测
+    -- Done: 无具体上下文, 考虑到下面有TR了视为已完成 --射线检测
     ang.p = 0
     ang.r = 0
     debugoverlay.BoxAngles(pos2, Vector(0, 0, 0), Vector(64, 0, 0), ang, 3, Color(0, 0, 255))
@@ -1886,6 +1900,7 @@ function ENT:Think()
 
             local hasGoal = self:GetCachedVar("NPC_HasMoveGoal", goal ~= vector_origin)
         
+            local chance = 65
             if hasGoal and own:GetPos():Distance(goal) > 64 then
                 self.Caches.NPC_LastGoalUpdate = ct --hasGoal and goal
                 if curWP ~= vector_origin then
@@ -1895,10 +1910,12 @@ function ENT:Think()
 
                 local noArm = noAimHTs[IsValid(wep) and wep:GetHoldType() or ""]
                 self:SetCachedVar("NPC_ShouldRHand", self:GetCachedVar("NPC_ShouldRHand", not self:GetCachedVar("NPC_ShouldRHand")), (noArm and 0.8 or 0.4) * math.Rand(0.9, 1.5))
+                chance = 85
             else
                 self:SetCachedVar("NPC_HasMoveGoal", false, 0.1)
-                self:SetCachedVar("NPC_CanGetUpVar", math.random(100) >= 85, math.Rand(3, 7))
             end
+            -- 恢复老算法 + Scripted NPC支持
+            self:SetCachedVar("NPC_CanGetUpVar", math.random(100) >= chance, math.Rand(3, 5))
 
             self.LowPose = hasGoal
 
@@ -2297,6 +2314,9 @@ function ENT:PlayDeadThink(own, ct)
     --print(allies, getCV("playdead_npc_allyamnt", "Int"))
     self.PlayingDead = allies < getCV("playdead_npc_allyamnt", "Int") and enemyInSight
 
+    local wep = own:GetActiveWeapon()
+    if IsValid(wep) then wep:SetNextPrimaryFire(ct + 1) end
+
 end
 
 function ENT:IsUnConsciousness(real)
@@ -2532,12 +2552,13 @@ function ENT:DealWithAnims(isPly, aimingWeapon, noArm, wepHT, isMeleeHT)
     local mdlScale = rag.Savee_AdvRagKnockdown_ModelScale
 
     local caches = self.Caches
+    local npc_shouldMove = caches.NPC_HasMoveGoal
 
     --local av = own:GetAimVector()
     local aea = self:GetAimEyeAngles()
     --print(own:GetGoalPos())
 
-    local in_forward = not isPly and caches.NPC_HasMoveGoal or self:HasKeyInput(IN_FORWARD)
+    local in_forward = not isPly and npc_shouldMove or self:HasKeyInput(IN_FORWARD)
     --local in_back = self:HasKeyInput(IN_BACK)
     local in_duck = self:HasKeyInput(IN_DUCK)
 
@@ -2840,8 +2861,8 @@ function ENT:DealWithAnims(isPly, aimingWeapon, noArm, wepHT, isMeleeHT)
                     angle = ang,
                     maxspeed = 0,
                     maxspeeddamp = 0,
-                    maxangular = (not nonFirearm and armaimang or torsoang),
-                    maxangulardamp = (not nonFirearm and armaimang or torsoangdamp),
+                    maxangular = (data.Arm and armaimang or torsoang),
+                    maxangulardamp = (data.Arm and armaimang or torsoangdamp),
                     dampfactor = 0.8,
                     delta = armaimdelta,
                     noCorrection = true,
@@ -2865,7 +2886,7 @@ function ENT:DealWithAnims(isPly, aimingWeapon, noArm, wepHT, isMeleeHT)
         end
         -- Sonic.EXE The Distaster 2D Remake.jpg
         -- I mean, 这不灾难吗?
-        -- ToDo: 整理这里
+        -- UNABLE: 懒得整 --整理这里
         if not nonFirearm then
 
             local _, faceAng = LocalToWorld(vector_origin, Angle(-90, 0, 90), vector_origin, aea)
@@ -3302,6 +3323,7 @@ function ENT:Tick()
 
     local aimingWeapon = consc >= 35 and (not isPly and (own:GetActivity() ~= ACT_IDLE or IsValid(own:GetEnemy())) or self:GetAimingWeapon())
     local caches = self.Caches
+    local npc_shouldMove = caches.NPC_HasMoveGoal and not blackListedSCHED[own:GetCurrentSchedule()]
 
     if IsValid(wep) then
         wepHT = wep:GetHoldType()
@@ -3316,7 +3338,7 @@ function ENT:Tick()
 
     if consc < noArmVal then noArm = true end
 
-    local in_forward = not isPly and caches.NPC_HasMoveGoal or self:HasKeyInput(IN_FORWARD)
+    local in_forward = not isPly and npc_shouldMove or self:HasKeyInput(IN_FORWARD)
     local in_back = self:HasKeyInput(IN_BACK)
 
     if isPly and (aimingWeapon or in_forward or self:HasKeyInput(IN_ATTACK) or self:HasKeyInput(IN_ATTACK2)) then

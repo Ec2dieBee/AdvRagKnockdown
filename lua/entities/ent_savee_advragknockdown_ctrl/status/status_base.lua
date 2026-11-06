@@ -24,14 +24,14 @@ function STATUS:Tick() end
 function STATUS:Think() end
 
 function STATUS:GetID()
-    return self.__id
+    return rawget(self, "__id")
 end
 
 -- 傻逼代码, 但本质上应该是个hack
 function STATUS:Remove()
     local ctrl = self.Controller
     if not IsValid(ctrl) then return end
-    ctrl.ActiveStatus[self:GetID()] = false
+    ctrl.ActiveStatus[self:GetID()] = nil -- 你他妈怎么写的代码
 end
 
 -- 在布娃娃初始化后调用
