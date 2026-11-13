@@ -121,10 +121,10 @@ local cv_kd_knockdown_gravgun = CreateConVar(cvPrefix .. "knockdown_gravitygun",
 
 local cv_kd_knockdown_velocity = CreateConVar(cvPrefix .. "knockdown_velocity", 1, cvTags, "[总开关] 在实体速度过高时击倒实体", 0, 1)
 local cv_kd_knockdown_velocity_ply, cv_kd_knockdown_velocity_npc = CreatePlyNPCConVar(cvPrefix .. "knockdown_velocity", 1, cvTags, "在速度过高时击倒实体", 0, 1)
-local cv_kd_knockdown_velocity_vehicle = CreateConVar(cvPrefix .. "knockdown_velocity_exitvehicle", 1, cvTags, "在跳车时进行速度击倒检测", 0, 1)
-local cv_kd_knockdown_velocity_ground = CreateConVar(cvPrefix .. "knockdown_velocity_ground", 1, cvTags, "在地面时进行速度击倒检测", 0, 1)
-local cv_kd_knockdown_velocity_air = CreateConVar(cvPrefix .. "knockdown_velocity_air", 1, cvTags, "在空中时进行速度击倒检测", 0, 1)
-local cv_kd_knockdown_velocity_val = CreateConVar(cvPrefix .. "knockdown_velocity_var", 2000, cvTags, "在实体速度超过这个时击倒实体", 0)
+local cv_kd_knockdown_velocity_vehicle = CreateConVar(cvPrefix .. "knockdown_velocity_exitvehicle", 0, cvTags, "在跳车时进行速度击倒检测, 出于引擎原因原版载具会在你完全下车时才检测", 0, 1)
+local cv_kd_knockdown_velocity_ground = CreateConVar(cvPrefix .. "knockdown_velocity_onground", 1, cvTags, "在地面时进行速度击倒检测", 0, 1)
+local cv_kd_knockdown_velocity_air = CreateConVar(cvPrefix .. "knockdown_velocity_inair", 1, cvTags, "在空中时进行速度击倒检测", 0, 1)
+local cv_kd_knockdown_velocity_spd = CreateConVar(cvPrefix .. "knockdown_velocity_spd", 2000, cvTags, "在实体速度超过这个时击倒实体", 0)
 
 local cv_kd_damagecalc_usetakedamage = CreateConVar(cvPrefix .. "knockdown_usetakedamage", 0, cvTags, "使用TakeDamageInfo并更进一步修改BulletTable, 可能会出现没受到伤害且力度不够时仍被击倒的情况", 0, 1)
 
@@ -151,7 +151,6 @@ CreateConVar(cvPrefix .. "surfing_speedmult_maxspeed", 0.35, cvTags, "在达到�
 CreateConVar(cvPrefix .. "surfing_minspeed", 75, cvTags, "布娃娃总体速度需大于该值才能滑行", 0)
 CreateConVar(cvPrefix .. "surfing_maxspeed", 400, cvTags, "达到最大速度时的速度乘数, 可以拿来做更好的滑行, 设置为低于minspeed的值可以停掉", 0)
 
--- FINISHME
 CreateConVar(cvPrefix .. "npc_usehook_createentityragdoll", 0, cvTags, "在NPC被击倒时调用CreateEntityRagdoll", 0, 1)
 CreateConVar(cvPrefix .. "playdead_npc_usehook_createentityragdoll", 1, cvTags, "在NPC假死时调用CreateEntityRagdoll", 0, 1)
 CreateConVar(cvPrefix .. "playdead_npc_allydist", 500, cvTags, "假死NPC寻找\"友军\"的距离", 0)
@@ -316,6 +315,24 @@ local function getController(ent)
 
     return ctrl
 end
+
+
+-- 用以防止你无法在经典高中物理的向心力计算相关题因为各种傻逼事情无法起身
+-- I mean, 你都能在那上面站稳了你还不能起身?(暴论)
+---@param ent Entity 要检验的实体
+---@return Vector 相对速度
+local function getLocalizedVelocity(ent)
+    local tr = util.QuickTrace(ent:GetPos(), Vector(0, 0, -32), ent)
+    local myVel = ent:IsRagdoll() and ent:GetPhysicsObject():GetVelocity() or ent:GetVelocity()
+
+    if not tr.Hit then return myVel end
+    local ground, physBone, point = tr.Entity, tr.PhysicsBone or 0, tr.HitPos
+    local pObj = ground:GetPhysicsObjectNum(physBone)
+    local vel = IsValid(pObj) and pObj:GetVelocityAtPoint(point) or tr.Entity:GetVelocity()
+    
+    return myVel - vel
+end
+
 
 local mtx = Matrix()
 local function getBoneMatrixPosAng(rag, name)
@@ -1013,9 +1030,11 @@ funchooks.Add("CUserCmd.SetViewAngles", "Savee_AdvRagKnockdown_RecoilCorrection"
     if not raw and handlingKnockdownedCmd then
         local oldAng = cmd:GetViewAngles(true)
         --local roll = oldAng.r
+        --print(roll)
         --print("wdym")
 
         local delta = ang - oldAng
+        --print(delta)
         oldAng:RotateAroundAxis(oldAng:Right(), -delta.p)
         oldAng:RotateAroundAxis(oldAng:Forward(), delta.y)
         oldAng:RotateAroundAxis(oldAng:Up(), delta.r)
@@ -1024,6 +1043,16 @@ funchooks.Add("CUserCmd.SetViewAngles", "Savee_AdvRagKnockdown_RecoilCorrection"
     end
     return __undetoured(cmd, ang, raw, ...)
 end)
+--[[funchooks.AddPost("CUserCmd.GetViewAngles", "Savee_AdvRagKnockdown_RecoilCorrection", function(cmd, inputs, ang, ...)
+    local raw = inputs[1]
+    if not raw and handlingKnockdownedCmd then
+        local newAng = Angle(ang.p, ang.y, ang.r)
+        newAng:RotateAroundAxis(ang:Forward(), -ang.r)
+        --print("wdym")
+        ang = newAng
+    end
+    return __undetoured(cmd, inputs, ang, ...)
+end)]]
 
 local handling
 -- 武器支持
@@ -1129,7 +1158,7 @@ hook.Add("EntityFireBullets", "Savee_AdvRagKnockdown_HitScanMod", function(ent, 
 
     --print(rHD, bullet.Src, eyePos, shootPos)
     if (IsValid(wep) and not wep:IsScripted() or bullet.Src == shootPos) and rHD <= 0.15 then
-        bullet.Src = eyePos
+        bullet.Src = eyePos + bullet.Dir
         --print(1)
     elseif rHD > 0.15 and bullet.Src == eyePos then
         bullet.Src = shootPos
@@ -1150,6 +1179,9 @@ hook.Add("EntityFireBullets", "Savee_AdvRagKnockdown_HitScanMod", function(ent, 
     local av = CLIENT and bullet.Dir or ent:GetAimVector(true)
     -- 神秘Bug修复
     local bDir = (isSP or SERVER) and bullet.Dir or av
+    if IsValid(wep) and wep.IsVJBaseWeapon then -- VJ兼容, 现在让那些子弹从枪管射出
+        bDir = av
+    end
 
     --print(bDir:Angle(), av:Angle(), ent:GetAimVector(true):Angle(), ent:EyeAngles(true))
     local _, dDir = WorldToLocal(vector_origin, bDir:Angle(), vector_origin, av:Angle())
@@ -1171,6 +1203,7 @@ hook.Add("EntityFireBullets", "Savee_AdvRagKnockdown_HitScanMod", function(ent, 
     --print(bullet.IgnoreEntity)
     --print(bullet.Src, ent:EyePos(), ent:GetShootPos())
     --print(math.Clamp((rHD - 0.03), 0, 1))
+    --print(rHD)
     bullet.Dir = LerpVector(math.Clamp((rHD - 0.03) * 10, 0, 1), bDir, hAngFwd)
 
     --[[local tr = util.TraceLine({
@@ -1262,48 +1295,91 @@ hook.Add("EntityEmitSound", "Savee_AdvRagKnockdown_Unconsciousness", function(da
     if IsValid(ent) and ent:GetNW2Bool("Savee_AdvRagKnockdown_SuppressMySound") then return false end
 end)
 
-local tickCo = coroutine.create(function()
-    while true do
-        local time = math.max(tickInterval, cv_kd_perf_luacode_nexttick:GetFloat())
-        local isFucked = cv_kd_perf_luacode_ctrlamnt:GetInt() ~= 0
-        local amnt = 0
+local doKnockdown
+local tickCos = {
+    -- Controller Tick
+    coroutine.create(function()
+        while true do
+            local time = math.max(tickInterval, cv_kd_perf_luacode_nexttick:GetFloat())
+            local isFucked = cv_kd_perf_luacode_ctrlamnt:GetInt() ~= 0
+            local amnt = 0
 
-        local ctrls = ents.FindByClass("ent_savee_advragknockdown_ctrl")
-        table.sort(ctrls, function(a)
-            local own = a:GetOwner()
-            if not IsValid(own) then return end
+            local ctrls = ents.FindByClass("ent_savee_advragknockdown_ctrl")
+            table.sort(ctrls, function(a)
+                local own = a:GetOwner()
+                if not IsValid(own) then return end
 
-            return a:IsPlayer()
-        end)
-        
-        for _, ent in ipairs(ctrls) do
-            if not IsValid(ent) or ent:IsMarkedForDeletion() then continue end
-            
-            local own = ent:GetOwner()
-            if not IsValid(ent:GetRagdoll()) or not IsValid(own) or own:IsMarkedForDeletion() or own:Health() <= 0 then ent:RemoveSelf() continue end
+                return a:IsPlayer()
+            end)
 
-            -- 操你妈我受不了了
-            -- 说真的要不是AI天天在那说这个玩意我都快把它忘了
-            -- (SpecialAction: 啊对对对)
-            local succ, err = pcall(ent.Tick, ent)
-            if not succ then
-                ErrorNoHalt("[AdvRagKnockdown] " .. err .. "\n")
+            for _, ent in ipairs(ctrls) do
+                if not IsValid(ent) or ent:IsMarkedForDeletion() then continue end
+
+                local own = ent:GetOwner()
+                if not IsValid(ent:GetRagdoll()) or not IsValid(own) or own:IsMarkedForDeletion() or own:Health() <= 0 then ent:RemoveSelf() continue end
+
+                -- 操你妈我受不了了
+                -- 说真的要不是AI天天在那说这个玩意我都快把它忘了
+                -- (SpecialAction: 啊对对对)
+                local succ, err = pcall(ent.Tick, ent)
+                if not succ then
+                    ErrorNoHalt("[AdvRagKnockdown] " .. err .. "\n")
+                end
+                if own:IsPlayer() then continue end
+
+                amnt = amnt + 1
+                if isFucked and amnt >= cv_kd_perf_luacode_ctrlamnt:GetInt() then
+                    amnt = 0
+                    coroutine.wait(time)
+                end
             end
-            if own:IsPlayer() then continue end
-
-            amnt = amnt + 1
-            if isFucked and amnt >= cv_kd_perf_luacode_ctrlamnt:GetInt() then
-                amnt = 0
-                coroutine.wait(time)
-            end
+            coroutine.wait(time)
         end
-        coroutine.wait(time)
-    end
-end)
+    end),
+    -- Velocity Knockdown
+    coroutine.create(function()
+        while SERVER do
+            local enabled = cv_kd_knockdown_velocity:GetBool() 
+            if not enabled then coroutine.wait(1) continue end
+
+            local velLen = cv_kd_knockdown_velocity_spd:GetFloat()
+            local air = cv_kd_knockdown_velocity_air:GetBool() --AimJimbar EHVV Plsus
+            local ground = cv_kd_knockdown_velocity_ground:GetBool()
+
+            for _, ent in ipairs(ents.GetAll()) do
+                if not IsValid(ent) or not entTypeCheck(ent) then continue end
+                ---@cast ent Entity
+                if ent:IsEFlagSet(EFL_NOCLIP_ACTIVE) then continue end
+                if not getCVPrefixed("knockdown_velocity", "Bool", ent:IsPlayer()) then continue end
+                local pos = ent:GetPos()
+                local min, max = ent:OBBMins(), ent:OBBMaxs()
+                local groundTr = util.TraceHull({
+                    start = pos, 
+                    endpos = pos - Vector(0, 0, 8), 
+                    mins = min,
+                    maxs = max,
+                    filter = ent,
+                })
+
+                local onGround = groundTr.Hit
+                if onGround and not ground or (not onGround and not air) then continue end
+
+                local vel = getLocalizedVelocity(ent)
+                local len = vel:Length()
+                if len < velLen then continue end
+                doKnockdown(ent) -- 傻逼代码
+
+                coroutine.wait(tickInterval)
+            end
+            coroutine.wait(0.1)
+        end
+    end),
+}
 
 hook.Add("Tick", "Savee_AdvRagKnockdown_CtrlTick", function()
-    if coroutine.status(tickCo) == "suspended" then
-        coroutine.resume(tickCo)
+    for _, co in ipairs(tickCos) do
+        if coroutine.status(co) ~= "suspended" then continue end
+        coroutine.resume(co)
     end    
 end)
 
@@ -1454,7 +1530,7 @@ if SERVER then
         [MOVETYPE_WALK] = true,
     }
 
-    local function doKnockdown(ply, vec, bone, playdead)
+    function doKnockdown(ply, vec, bone, playdead)
         if not cv_kd_enabled:GetBool() then return end
         if not entTypeCheck(ply) then return end
 
@@ -1843,7 +1919,7 @@ if SERVER then
             local actionStr = net.ReadString()
 
             if actionStr and allowedActions_Key[actionStr] then
-                ctrl:AddStatus(actionStr)
+                ctrl:AddStatus(actionStr, true)
             end
         elseif IsValid(ctrl) then
             if type == 1 then
@@ -2179,6 +2255,14 @@ if SERVER then
         if IsValid(ctrl) then return false end
     end)
 
+    hook.Add("PlayerLeaveVehicle", "Savee_AdvRagKnockdown_VelocityKnockdown", function(ply, veh)
+        if not cv_kd_knockdown_velocity_ply:GetBool() or not cv_kd_knockdown_velocity_vehicle:GetBool() then return end
+        local vel = getLocalizedVelocity(veh)
+        if vel:Length() < cv_kd_knockdown_velocity_spd:GetFloat() then return end
+
+        doKnockdown(ply)
+    end)
+
     hook.Add("SetupPlayerVisibility", "Savee_AdvRagKnockdown_PVS", function(ply, ve)
         if IsValid(ve) and ve ~= ply then return end
         local ctrl = getController(ply)
@@ -2401,6 +2485,7 @@ else
     end)
 
     lowpriohook.Add("InputMouseApply", "Savee_AdvRagKnockdown_ViewControl", function(cmd, x, y)
+        
         --print(cmd:GetMouseY(), y)
         local ctrl = getController(LocalPlayer())
         if not IsValid(ctrl) or (x == 0 and y == 0) then return end
@@ -2411,7 +2496,7 @@ else
 
         local conscLerp = math.ease.OutQuint(consc / 100)
 
-        local oldAng = cmd:GetViewAngles()
+        local oldAng = cmd:GetViewAngles(true)
 
         local refAng = oldAng
 
@@ -2429,6 +2514,11 @@ else
         return true
     end)
 
+    --[[lowpriohook.Add("InputMouseApply", "Savee_AdvRagKnockdown_ViewControl_Override", function(cmd, x, y)
+        local ctrl = getController(LocalPlayer())
+        if IsValid(ctrl)then return true end
+    end)]]
+
     local last_stored_roll = 0
     lowpriohook.Add("StartCommand", "Savee_AdvRagKnockdown_RagOperation", function(ply, cmd)
         ---@type Entity
@@ -2437,7 +2527,7 @@ else
 
         local consc = ctrl:GetConsciousness()
 
-        local oldAng = ctrl:GetAimEyeAngles()
+        local oldAng = cmd:GetViewAngles(true)
         local wep = ply:GetActiveWeapon()
 
         -- 原版武器兼容, 虽然你无论怎么压枪弹道都是往上飘的就是了
@@ -2455,8 +2545,9 @@ else
         elseif cmd:KeyDown(IN_MOVERIGHT) then
             oldAng = (oldAng + Angle(0, 0, 90) * conscLerp * FrameTime())
         end
-        cmd:SetViewAngles(oldAng, true)
         last_stored_roll = oldAng.r
+        cmd:SetViewAngles(oldAng, true)
+        --print(last_stored_roll)
 
         local aimingBind = clcv_ctrl_nodefkeybind:GetBool() and input.LookupBinding("+advragknockdown_aimweapon") or input.LookupBinding(cvPrefix .. "toggleaimweapon")
 
@@ -2738,6 +2829,7 @@ else
 end
 
 Savee_AdvRagKnockdown_GetController = getController
+Savee_AdvRagKnockdown_GetLocalizedVelocity = getLocalizedVelocity
 
 -- 傻逼
 if debugging:GetBool() and isSP then
@@ -2826,4 +2918,7 @@ hook列表
         },
 
 ]]
+
+
+
 

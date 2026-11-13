@@ -4,6 +4,7 @@ ENT.Base = "base_anim"
 ENT.PrintName = "滚木实体"
 
 ENT.AutomaticFrameAdvance = true
+ENT.RenderGroup = RENDERGROUP_OTHER
 
 ENT.Category = "Savee Stuffs - OTHERS"
 

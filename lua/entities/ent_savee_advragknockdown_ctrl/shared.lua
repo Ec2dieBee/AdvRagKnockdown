@@ -19,7 +19,7 @@
 ---警告! 这并不意味着你可以躲在电视后面听The Great Punishment然后拿霰弹枪射击**某个很大的猫科生物**
 -- Done: 引入类似Z-City的健康系统, (意识(能否控制武器/控制力), 体力(最大控制力), 我猜这两个够用了(坐等其他人搬运Z-City健康系统.jpg))
 -- Done: 让Miku可以舒适的射击(G🐀神秘更新让JiggleBones强制替代了PhysBone 26/8/2 不知道怎么又改回去了 26/8/19 疑似插件导致🐹🐹🐹)
--- ToDo: 加个切换伸手的可选项(CL/SV)
+-- ToDo?: 加个切换伸手的可选项(CL/SV) --Bro这对吗
 -- ToDo: CLASSIC KNOCKDOWN
 -- ToDo: 通用性关键部位(Hand, Spine)Setup + 检测
 AddCSLuaFile()
@@ -678,6 +678,7 @@ ENT.NextRegenStamina = -1
 ENT.NextRegenConsciousness = -1
 ENT.NextSetLArmDelta = -1
 ENT.NextSetRArmDelta = -1
+ENT.RArmDelta_DontUseDotsTill = -1
 ENT.CanSetLArmDelta = true
 ENT.CanSetRArmDelta = true
 
@@ -956,9 +957,9 @@ end
 
 ENT.ActiveStatus = {}
 
-function ENT:AddStatus(name)
+function ENT:AddStatus(name, byPlyAction)
     local tbl = Savee_AdvRagKnockdown_StatusTables
-    if not tbl[name] or self.ActiveStatus[name] ~= nil then return end
+    if not tbl[name] or self.ActiveStatus[name] ~= nil or (byPlyAction and not setupAndRun(self, name, "CanBeUsed")) then return end
     
     self.ActiveStatus[name] = {}
     setupAndRun(self, name, "OnApply")
@@ -1262,6 +1263,8 @@ function ENT:Initialize()
     
     end)
 
+    local ct = CurTime()
+
     self.RagLastModel = rag:GetModel()
     self.RagPObjs = pObjs
 
@@ -1333,7 +1336,7 @@ function ENT:Initialize()
             ent:SetLocalAngles(ang)
         end
 
-        self.MotionController_LastRun = CurTime()
+        self.MotionController_LastRun = ct
         self:StartMotionController()
         self:AddToMotionController(rag:GetPhysicsObject())
         
@@ -1349,7 +1352,7 @@ function ENT:Initialize()
     self.m_iOwnCollisionGroup = own:GetCollisionGroup()
     --self.m_iOwnSolid = own:GetSolid()
     self.m_entOwnLightOrigin = own:GetLightingOriginEntity()
-    self.m_vOwnViewOffset = own:GetViewOffset()
+    self.m_vOwnViewOffset = own:GetViewOffset() or vector_origin
     self.m_vOwnCollisioBoundMin, self.m_vOwnCollisioBoundMax = own:GetCollisionBounds()
     
     -- BUG: 市民有这个MOVETYPE的时候会卡列车动画
@@ -1391,6 +1394,9 @@ function ENT:Initialize()
     anim:SetCollisionGroup(COLLISION_GROUP_IN_VEHICLE)
     anim:SetNoDraw(true)
     anim:SetAutomaticFrameAdvance(true)
+    
+    anim:SetOwner(self)
+    fakePly:SetOwner(self)
 
     --do print("KO!") self:Remove() rag:Remove() return end
     if not own:IsPlayer() then 
@@ -1404,6 +1410,14 @@ function ENT:Initialize()
         anim:AddEFlags(EFL_KEEP_ON_RECREATE_ENTITIES)
         fakePly:AddEFlags(EFL_KEEP_ON_RECREATE_ENTITIES)
     end
+
+    self.NextSetLArmDelta = ct + 0.2
+
+    self.RArmDelta_DontUseDotsTill = ct + 0.2
+    self.NextSetRArmDelta = ct + 0.1
+
+    self:SetRArmDelta(0)
+    self:SetLArmDelta(0)
 
     --do print("KO!") self:Remove() rag:Remove() return end
 
@@ -1669,6 +1683,7 @@ function ENT:OnRemove()
         else
             own:ClearSchedule()
         end
+        --print(own)
 
         if own:GetMoveParent(true) == rag then
             own:SetParent(nil)
@@ -2488,6 +2503,113 @@ function ENT:GenerateNPCGrabbingPos(armPos)
     return finalPos
 end
 
+-- 计算LArmDelta和RArmDelta
+function ENT:CalcArmDeltas(isPly, wepHT, isMeleeHT, eyepos)
+    local ct = CurTime()
+    local own = self:GetOwner()
+    local rag = self:GetRagdoll()
+
+    local lArmDeltaMax = 1
+    local rArmDeltaMax = 1
+    local oldLArm = self:GetLArmDelta()
+    local oldRArm = self:GetRArmDelta()
+
+    if self:GetAimingWeapon() then
+        local aea = self:GetAimEyeAngles()
+
+        local fakePly = self.FakePlyModel
+
+        local ragHeadPos = getBoneMatrixPosAng(rag, "ValveBiped.Bip01_Head1")
+        --local ragLUArmPos = getBoneMatrixPosAng(rag, "ValveBiped.Bip01_L_UpperArm")
+        --local ragRUArmPos = getBoneMatrixPosAng(rag, "ValveBiped.Bip01_R_UpperArm")
+        --local ragLFArmPos = getBoneMatrixPosAng(rag, "ValveBiped.Bip01_L_Forearm")
+        --local ragRFArmPos = getBoneMatrixPosAng(rag, "ValveBiped.Bip01_R_Forearm")
+        local animHeadPos = fakePly:GetBonePosition(fakePly:LookupBone("ValveBiped.Bip01_Head1") or 0)
+        local animLHandPos, animLHandAng = fakePly:GetBonePosition(fakePly:LookupBone("ValveBiped.Bip01_L_Hand") or fakePly:LookupBone("ValveBiped.Bip01_L_Forearm") or 0)
+        local animRHandPos, animRHandAng = fakePly:GetBonePosition(fakePly:LookupBone("ValveBiped.Bip01_R_Hand") or fakePly:LookupBone("ValveBiped.Bip01_R_Forearm") or 0)
+
+        local _, faceAng = LocalToWorld(vector_origin, Angle(-90, 0, 90), vector_origin, aea)
+        local lhToLocalPos, lhToLocalAng = WorldToLocal(animLHandPos, animLHandAng, animRHandPos, animRHandAng)
+        local rhToLocalPos, rhToLocalAng = WorldToLocal(animRHandPos, animRHandAng, animHeadPos, faceAng)
+        _, faceAng = LocalToWorld(vector_origin, Angle(-90, 0, 90), vector_origin, aea)
+
+        rhToLocalPos, rhToLocalAng = LocalToWorld(rhToLocalPos, rhToLocalAng, ragHeadPos, faceAng)
+
+        -- RArm
+        local dot = 1
+        local pobjPos, pobjDir = getBoneMatrixPosAng(rag, "ValveBiped.Bip01_R_Hand")
+        pobjDir = pobjDir:Forward()
+
+        if not isMeleeHT then
+            -- 歪打正着
+            local wepDelta = (aimPosDelta[wepHT] or twoArmAimDelta)
+            local delta = aea:Forward() * wepDelta.x * (isPly and 1 or deltaedHT[wepHT] and 1.2 or 1.5) + aea:Right() * wepDelta.y * (isPly and 1 or wepDelta == twoArmAimDelta and 2 or 1) + aea:Up() * wepDelta.z
+            rhToLocalPos = eyepos + delta
+
+            if self.RArmDelta_DontUseDotsTill <= ct then
+                local _, rHandFaceAng = LocalToWorld(vector_origin, Angle(5, 0, 180), vector_origin, aea)
+                
+                rHandFaceAng = LerpAngle(0.6, rhToLocalAng, rHandFaceAng)
+                lhToLocalPos, lhToLocalAng = LocalToWorld(lhToLocalPos, lhToLocalAng, rhToLocalPos, rHandFaceAng)
+                local _, rHandFaceAng = LocalToWorld(vector_origin, Angle(5, 0, 180), vector_origin, aea)
+
+                dot = math.abs(math.min(1, pobjDir:Dot(rHandFaceAng:Forward()) * (isPly and 1 or 1.1)))
+
+            end
+
+        end
+
+
+        rArmDeltaMax = math.min(dot, 1 - math.max(0, pobjPos:Distance(rhToLocalPos) - 10) / 5)
+        --print(rArmDeltaMax, dot, 1 - math.max(0, pobjPos:Distance(rhToLocalPos) - 10) / 5, self.RArmDelta_DontUseDotsTill < ct )
+
+        -- LArm
+        pobjPos = getBoneMatrixPosAng(rag, "ValveBiped.Bip01_L_Hand")
+        lArmDeltaMax = 1 - math.max(0, pobjPos:Distance(lhToLocalPos) - 15) / 10
+        --print(1 - math.max(0, pobjPos:Distance(lhToLocalPos) - 15) / 10)
+        rArmDeltaMax = Lerp(rArmDeltaMax + 0.15, 1, 0) -- 有人忘了基本数学, -9^2=81
+        lArmDeltaMax = Lerp(lArmDeltaMax + 0.25, 1, 0)
+
+    end
+
+    --print(rArmDeltaMax)
+    --print(lArmDeltaMax)
+    if self.NextSetRArmDelta <= ct then
+
+        local finalVar = math.Approach(oldRArm, rArmDeltaMax, 0.35)
+
+        --print(finalVar, oldRArm, rArmDeltaMax, finalVar ~= 0)
+        self.CanSetRArmDelta = finalVar <= 0
+        if oldRArm == 0 and self.CanSetRArmDelta then
+            self.NextSetRArmDelta = ct + 0.15
+            --print(1)
+        else
+            self:SetRArmDelta(finalVar)
+        end
+
+    end
+
+    local caches = self.Caches
+    local npc_shouldMove = caches.NPC_HasMoveGoal and not blackListedSCHED[own:GetCurrentSchedule()]
+    local in_forward = not isPly and npc_shouldMove or self:HasKeyInput(IN_FORWARD)
+    if not in_forward and self.NextSetLArmDelta <= ct then
+
+        local finalVar = math.Approach(oldLArm, lArmDeltaMax, 0.2)
+
+        --print(finalVar, oldLArm, lArmDeltaMax)
+        self.CanSetLArmDelta = finalVar <= 0
+        if oldLArm == 0 and self.CanSetLArmDelta then
+            self.NextSetLArmDelta = ct + 0.25
+            --print(1)
+        else
+            --print(finalVar)
+            self:SetLArmDelta(finalVar)
+        end
+
+    end
+
+end
+
 local shadowDatas = {
     --"maxspeed",
     "maxangular",
@@ -2719,9 +2841,6 @@ function ENT:DealWithAnims(isPly, aimingWeapon, noArm, wepHT, isMeleeHT)
 
     if aimingWeapon and not noArm then
 
-        local oldLArm = self:GetLArmDelta()
-        local oldRArm = self:GetRArmDelta()
-
         own:SetAbsVelocity(rag:GetVelocity(), true)
 
         local pos, ang = getPhysBonePosAng(pObjs, "ValveBiped.Bip01_R_Hand")
@@ -2796,7 +2915,6 @@ function ENT:DealWithAnims(isPly, aimingWeapon, noArm, wepHT, isMeleeHT)
         --print(nonFirearm)
 
         local lArmDeltaMax = 1
-        local rArmDeltaMax = 1
         if nonFirearm then
             for bName, data in pairs(originalAnimBones) do
             
@@ -2843,12 +2961,6 @@ function ENT:DealWithAnims(isPly, aimingWeapon, noArm, wepHT, isMeleeHT)
                 --pObj:EnableMotion(true)
                 --pObj:EnableCollisions(false)
                 --local equal = ang:IsEqualTol(pObj:GetAngles(), 125)
-
-                --[[if lArmDeltaBones[bName] then
-                    forceMul = forceMul * Lerp((oldLArm - 0.2), 1, isPly and 10 or 100)
-                elseif rArmDeltaBones[bName] then
-                    forceMul = forceMul * Lerp((oldRArm - 0.2) / 0.8, 1, isPly and 10 or 100)
-                end]]
 
                 --[[local htAng = aimPosDelta[wepHT][bName]
                 --print(bName, htAng)
@@ -2906,7 +3018,7 @@ function ENT:DealWithAnims(isPly, aimingWeapon, noArm, wepHT, isMeleeHT)
                 --rhToLocalPos = eyepos + aea:Forward() * wepDelta.x + aea:Right() * wepDelta.y + aea:Up() * wepDelta.z
             end
             --rhToLocalPos = rhToLocalPos + aea:Up() * 5
-            local _, rHandFaceAng = LocalToWorld(vector_origin, Angle(5, 0, 180),vector_origin, aea)
+            local _, rHandFaceAng = LocalToWorld(vector_origin, Angle(5, 0, 180), vector_origin, aea)
             
             rHandFaceAng = LerpAngle(0.6, rhToLocalAng, rHandFaceAng)
             lhToLocalPos, lhToLocalAng = LocalToWorld(lhToLocalPos, lhToLocalAng, rhToLocalPos, rHandFaceAng)
@@ -2993,52 +3105,9 @@ function ENT:DealWithAnims(isPly, aimingWeapon, noArm, wepHT, isMeleeHT)
                 addMass = handAimUseMass,
             }
 
-            local pobjPos, pobjDir = getBoneMatrixPosAng(rag, "ValveBiped.Bip01_R_Hand")
-            pobjDir = pobjDir:Forward()
-            local dot = math.min(1, pobjDir:Dot(rHandFaceAng:Forward()) * (isPly and 1 or 1.1))
-            --print(dot)
-            rArmDeltaMax = math.min(rArmDeltaMax, dot, 1 - math.max(0, pobjPos:Distance(rhToLocalPos) - (isPly and 5 or 15)) / 5)
-            pobjPos = getBoneMatrixPosAng(rag, "ValveBiped.Bip01_L_Hand")
-            lArmDeltaMax = 1 - math.max(0, pobjPos:Distance(lhToLocalPos) - 15) / 10
-            
-            --print(rArmDeltaMax)
-
         end
 
-        lArmDeltaMax = Lerp(lArmDeltaMax + 0.25, 1, 0)
-        rArmDeltaMax = Lerp((rArmDeltaMax + 0.15) ^ 2, 1, 0)
-        --print(lArmDeltaMax)
-        if self.NextSetRArmDelta <= ct then
-
-            local finalVar = math.Approach(oldRArm, rArmDeltaMax, 0.35)
-
-            --print(0)
-            self.CanSetRArmDelta = nonFirearm or finalVar ~= 0
-            if oldRArm == 0 and self.CanSetRArmDelta then
-                self.NextSetRArmDelta = ct + 0.05
-                --print(1)
-            else
-                self:SetRArmDelta(finalVar)
-            end
-
-        end
-
-        if not in_forward and self.NextSetLArmDelta <= ct then
-
-            local finalVar = math.Approach(oldLArm, lArmDeltaMax, 0.2)
-
-            --print(finalVar)
-            self.CanSetLArmDelta = nonFirearm or finalVar <= 0
-            if oldLArm == 0 and self.CanSetLArmDelta then
-                self.NextSetLArmDelta = ct + 0.05
-                --print(1)
-            else
-                self:SetLArmDelta(finalVar)
-            end
-
-        end
-
-        local const = self.LHand_Grabbing
+        --local const = self.LHand_Grabbing
         if in_forward then
             self:SetLArmDelta(math.Approach(self:GetLArmDelta(), 1, 0.25))
 
@@ -3089,14 +3158,15 @@ function ENT:DealWithAnims(isPly, aimingWeapon, noArm, wepHT, isMeleeHT)
                 delta = handdelta,
                 addMass = handUseMass,
             }
-
-        elseif not IsValid(const) then
-            self:SetLArmDelta(math.Approach(self:GetLArmDelta(), lArmDeltaMax, 0.25))
         end
 
     else
-        self:SetLArmDelta(1)
-        self:SetRArmDelta(1)
+        -- 也许这里让CalcArmDeltas烹饪会更好点
+        -- noArm有时候是true
+        --self:SetLArmDelta(1)
+        --self:SetRArmDelta(1)
+        --print(self:GetRArmDelta())
+        --print(aimingWeapon, noArm)
 
         local lhand = (isPly and noArm) and self:HasKeyInput(IN_ATTACK) or (not isPly or not noArm) and in_forward
         local rhand = self:HasKeyInput(IN_ATTACK2) or (not isPly and in_forward)
@@ -3354,6 +3424,8 @@ function ENT:Tick()
 
         self.NextCalcAnim = ct + (isPly and 0.1 or 0.3)
     end
+
+    self:CalcArmDeltas(isPly, wepHT, isMeleeHT, eyepos)
 
     --aea.r = pelvis:GetAngles().z
     --self:SetAimEyeAngles(aea)

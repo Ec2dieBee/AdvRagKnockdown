@@ -12,6 +12,10 @@
 
 STATUS.Base = "status_base"
 
+-- 在玩家选择进行这个行为时调用
+---@return bool 是否允许玩家进行这个行为
+function STATUS:CanBeUsed() return true end
+
 -- 在被施加时调用
 function STATUS:OnApply() end
 

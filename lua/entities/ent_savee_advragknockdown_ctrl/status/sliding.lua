@@ -7,11 +7,17 @@ local pelvisUseMass = false
 local legUseMass = true
 local legDelta = 15
 
+local getLocalizedVelocity = Savee_AdvRagKnockdown_GetLocalizedVelocity
+
 local function getPhysBonePosAng(tbl, name)
     local pObj = (tbl[name] or {}).pObj
     if not pObj then return vector_origin, angle_zero end
     
     return pObj:GetPos(), pObj:GetAngles()
+end
+
+function STATUS:CanBeUsed() 
+    return self.Controller_Owner:IsSprinting()
 end
 
 function STATUS:OnApply()
@@ -33,11 +39,11 @@ function STATUS:OnAnimationCaculated(pObjs, shadowCtrls)
 
     if not groundTr.Hit and not groundTr.HitSky then return end
 
-    local velAng = rag:GetPhysicsObject():GetVelocity():Angle()
+    local velAng = getLocalizedVelocity(rag):Angle()
     local ang = groundTr.HitNormal:Angle()
     
     local _, angDiff = WorldToLocal(vector_origin, aea, vector_origin, velAng)
-    local left = angDiff.y >= 0 or aea.r < 0
+    local left = math.abs(aea.r) <= 5 and angDiff.y >= 0 or aea.r < 0
     local id = left and 1 or 2
 
     --print(left, math.floor(aea.r) < 0, math.floor(angDiff.y) > 0)
@@ -134,7 +140,7 @@ function STATUS:Think()
     local ct = CurTime()
     local rag = self.Controller_Ragdoll
 
-    local satisfied = rag:GetVelocity():Length() < surfSpdMin:GetFloat()
+    local satisfied = getLocalizedVelocity(rag):Length() < surfSpdMin:GetFloat()
     if ct >= self.DontRemoveTill and satisfied then 
         self:Remove() 
     elseif not satisfied then
